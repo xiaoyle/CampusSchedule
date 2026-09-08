@@ -130,7 +130,7 @@ export function assemble(
       >();
       for (const [w, cs] of [...g.byWeek].sort((a, b) => a[0] - b[0])) {
         cs.sort((a, b) =>
-          (a.teacher + a.location).localeCompare(b.teacher + b.location),
+          (a.teacher + a.location).localeCompare(b.teacher + b.location, "zh-CN"),
         );
         const key = JSON.stringify(cs).replace(/\s/g, ""),
           v = vs.get(key) || { weeks: [], candidates: cs };
@@ -150,7 +150,7 @@ export function assemble(
       (a, b) =>
         a.weekday - b.weekday ||
         a.startPeriod - b.startPeriod ||
-        a.title.localeCompare(b.title),
+        a.title.localeCompare(b.title, "zh-CN"),
     );
   return {
     schedule: { term: term(title), firstMonday, periods, rules },
