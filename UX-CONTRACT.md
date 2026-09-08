@@ -34,3 +34,23 @@
 | 主题收藏 | DiyStore | 最多 8 套，显式收藏和应用；收藏立即保存，应用后点击保存到桌面 |
 
 DIY 不宣称解决卓易通与鸿蒙桌面之间的组件兼容性。此次不做多机型回归，真实图片、启动器显示和交互由用户测试补充。
+
+
+## 网页版 / PWA 0.1.0
+
+Web 的组件所有权：课程卡为 main.tsx 的 card；对话框为 Modal；日期及周选择为原生 date/select；表单校验由 model.ts 拥有；反馈为统一 message/notice，弹窗内也显示失败原因；滚动由 style.css 保留系统行为；持久写入仅由 store.ts 执行。
+
+文件/粘贴 → 解析 → 预览 → 明确确认 → IndexedDB 写入完成 → 刷新界面。解析失败或取消不写入；忙碌锁阻止重复提交。新版可刷新提示在解析或预览时禁用，避免丢失未确认数据。快照仅接收全部周次。学校页面由 Safari/学校负责，不在 PWA 中仿造登录页。
+
+推荐先安装再导入；Safari 与独立 Web App 数据不保证共享，用备份文件转移。更新 Service Worker 不删除 IndexedDB。学校快捷指令输出经剪贴板显式带回，未授权时提供手动粘贴，不自动读取。
+
+### Canonical UI Map（Web）
+
+| Capability | Canonical owner | Source of truth | Allowed variants | Verification |
+|---|---|---|---|---|
+| Select/Listbox | main.tsx 原生 select | 本约定 | 教学周 | 浏览器选择与键盘 |
+| Date | main.tsx 原生 date + model.monday | 本约定 | 第一教学周 | 日期边界测试 |
+| Form | model.ts 校验 + run 忙碌锁 | 本约定 | 文件、粘贴 | 成功/损坏/重复 |
+| Scrollbar | style.css 系统滚动条 | DESIGN.md | 页面、弹窗 | 320–1280 宽度 |
+| Toast | main.tsx message/notice | 本约定 | 页面、弹窗内 | 错误及保存反馈 |
+| CRUD | store.ts + 导入预览 | 本约定 | 确认替换 | 保存、重开、失败保留 |

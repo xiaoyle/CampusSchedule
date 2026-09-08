@@ -123,3 +123,10 @@ Android Lint：0 错误，16 项提示（原有兼容性/JavaScript/Kotlin 写�
 ## 证据位置
 
 本工作目录的 `core/build/test-results/test/`、`app/build/reports/lint-results-debug.html`、`.tools/final-device-tests.log`、`.tools/screenshots/` 保存开发验证输出。它们不进入可分享源码包，避免混入个人课表样本或本机缓存。源码中保留测试代码；私有输入不分发。
+
+
+## 网页版 0.1.0 · 2026-09-08
+
+Windows / Edge 自动检查通过：原始九页 PDF 导入（29 项/17 周），Word 与浏览器 PDF 每条展开课程及候选信息一致；预览确认、保存后重开、损坏文件不覆盖、离线基础壳/已保存课表、离线 PDF 再导入、安装引导、320/390/768/1280 宽度无整页横向溢出。浅色未导入页面及深色设置页已检查截图。离线通过浏览器网络模拟验证；网络状态标识依赖 navigator.onLine，不能用于判断学校网站是否可达。
+
+待真机：iOS 17+ Safari、添加到主屏幕、独立启动、系统字号、横竖屏与安全区域、学校认证/二次验证、快捷指令权限和完整导入；Android 手机浏览器安装。Windows Edge 结果不作为这些项目已通过的证据。

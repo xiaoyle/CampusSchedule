@@ -1,5 +1,16 @@
 # 中大课表助手
 
+## iPhone / 网页版（新增）
+
+**[打开中大课表网页版](https://xiaoyle.github.io/CampusSchedule/)** · xiaoyle 制作
+
+Safari 访问 → 添加到主屏幕 → 从图标打开 → 导入 Word / PDF 或粘贴快捷指令课表 → 预览确认。已保存课表可离线查看。
+
+[网页版使用、开发与隐私说明](web/README.md) · [学校快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)
+
+iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包含安卓后台闹铃或原生桌面组件。以下为安卓版本说明。
+
+
 <p align="center">
   <img src="docs/images/readme-hero.svg" alt="中大课表助手：今日课程、下一节课与桌面 DIY" width="900">
 </p>

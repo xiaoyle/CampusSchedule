@@ -55,3 +55,8 @@ CampusSchedule
 - 选择文件导入而不是自动登录学校系统，降低账号和二次验证风险。
 - 首版只维护一份当前学期课表，不增加账号、云同步或数据迁移。
 - 华为原生鸿蒙卡片属于另一套平台能力，不由安卓 Glance 组件覆盖。
+
+
+## Web / PWA
+
+`web/README.md` 描述浏览器端结构。Web 为独立 Vite/React/TypeScript 工程，移植 core 课程规则，PDF.js 读取几何信息，IndexedDB 存储。共享的是模型语义与回归样本，不运行 JVM/Room。Service Worker 仅缓存本站构建资源，不代理或缓存学校登录；版本更新不删除课程。Safari 快捷指令通过显式剪贴板操作转移经验证的 WebImportPayload。

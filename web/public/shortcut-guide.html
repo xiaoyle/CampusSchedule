@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  /><meta name="theme-color" content="#176B52" /><title>
+    配置课表快捷指令 · 中大课表</title
+  ><style>
+    body {
+      font-family: system-ui;
+      line-height: 1.9;
+      background: #f3f7f4;
+      color: #172d26;
+      max-width: 700px;
+      margin: auto;
+      padding: 32px 22px;
+    }
+    h1 {
+      font-size: 28px;
+    }
+    a {
+      color: #176b52;
+    }
+    li {
+      margin: 15px 0;
+    }
+    button {
+      font: inherit;
+      padding: 12px 20px;
+      background: #176b52;
+      color: white;
+      border: 0;
+      border-radius: 12px;
+    }
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      height: 200px;
+      margin: 20px 0;
+      font-size: 16px;
+    }
+    aside {
+      padding: 16px;
+      background: #e5efe9;
+      border-radius: 12px;
+    }
+  </style>
+  <body>
+    <a href="./">← 返回中大课表</a>
+    <h1>首次配置「中大课表提取」</h1>
+    <p>
+      只需配置一次。之后在 Safari
+      分享菜单运行，课表会复制到剪贴板。无需把账号交给本应用。
+    </p>
+    <aside>
+      这是手动配置教程。尚未提供经过 Apple
+      设备验证的可安装分享链接；真实学校流程仍需 iPhone 验证。
+    </aside>
+    <ol>
+      <li>
+        在 iPhone 打开「快捷指令」，新建快捷指令，命名为「中大课表提取」。
+      </li>
+      <li>
+        打开快捷指令详情，开启「在共享表单中显示」，接收类型选择「Safari
+        网页」。
+      </li>
+      <li>
+        添加「在网页上运行
+        JavaScript」操作，输入选择「快捷指令输入」。将默认脚本全部替换为下方脚本。
+      </li>
+      <li>
+        在该操作后添加「拷贝至剪贴板」，内容选择上一步的 JavaScript
+        结果。再添加「显示提醒」，填写「课表已复制，请回到主屏幕中大课表粘贴」。
+      </li>
+      <li>
+        若系统要求允许运行脚本，按系统提示开启；首次运行可能要求允许在学校域名上执行。
+      </li>
+    </ol>
+    <button id="copy">复制提取脚本</button>
+    <p id="status" role="status"></p>
+    <textarea id="script" aria-label="快捷指令脚本" readonly></textarea>
+    <p><a href="shortcut.js" download>下载脚本文件</a></p>
+    <h2>每次导入</h2>
+    <ol>
+      <li>
+        用 Safari 打开<a
+          href="https://jwxt.sysu.edu.cn/jwxt/#/login"
+          rel="noreferrer"
+          >学校登录</a
+        >，自行完成 NetID 和二次验证。
+      </li>
+      <li>
+        登录后打开<a
+          href="https://jwxt.sysu.edu.cn/jwxt/mk/schedule-web/#/studentTimeTabPrint?code=jwxsd_xskbcx"
+          rel="noreferrer"
+          >完整课表页面</a
+        >，选择学期及「全部」周次。若回到登录页，请重新登录；不要在手机单周视图提取。
+      </li>
+      <li>点击 Safari「分享」→「中大课表提取」。</li>
+      <li>从主屏幕图标打开中大课表 → 导入与设置 → 粘贴课表 → 预览确认保存。</li>
+    </ol>
+    <p>
+      脚本只读取指定课表表格与脱敏学期标题，不读取登录表单或
+      Cookie。不会自动上传数据。遇到页面改版或加载失败，请使用 Word／PDF 导入。
+    </p>
+    <p>xiaoyle 制作 · 非学校官方应用</p>
+    <script>
+      fetch("shortcut.js")
+        .then((r) => {
+          if (!r.ok) throw Error();
+          return r.text();
+        })
+        .then((s) => (document.querySelector("#script").value = s))
+        .catch(
+          () =>
+            (document.querySelector("#status").textContent =
+              "脚本加载失败，请联网重新打开。"),
+        );
+      document.querySelector("#copy").onclick = async () => {
+        const e = document.querySelector("#script");
+        if (!e.value) return;
+        try {
+          await navigator.clipboard.writeText(e.value);
+          document.querySelector("#status").textContent = "已复制";
+        } catch {
+          e.focus();
+          e.select();
+          document.querySelector("#status").textContent =
+            "请长按文本框，全选并复制。";
+        }
+      };
+    </script>
+  </body>
+</html>

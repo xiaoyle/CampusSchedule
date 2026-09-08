@@ -1,0 +1,6 @@
+node_modules/
+dist/
+public/cmaps/
+public/standard_fonts/
+test-results/
+playwright-report/
