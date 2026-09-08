@@ -1,0 +1,15 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#176B52</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <string name="today_widget_description">今日课程、上课时间与教室</string>
+    <string name="next_widget_description">正在上课或下一节课</string>
+    <string name="today_widget_label">中大课表助手 · 今日课程</string>
+    <string name="next_widget_label">中大课表助手 · 下一节课</string>
+    <string name="widget_preview_title">中大课表助手</string>
+    <string name="widget_preview_hint">导入课表后显示时间与教室</string>
+    <string name="creator_credit">xiaoyle 制作</string>
+</resources>
