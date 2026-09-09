@@ -7,8 +7,10 @@
     </style>
     <string name="today_widget_description">今日课程、上课时间与教室</string>
     <string name="next_widget_description">正在上课或下一节课</string>
+    <string name="study_widget_description">最近待办、今日课程和学习进度</string>
     <string name="today_widget_label">中大课表助手 · 今日课程</string>
     <string name="next_widget_label">中大课表助手 · 下一节课</string>
+    <string name="study_widget_label">中大课表助手 · 学习看板</string>
     <string name="widget_preview_title">中大课表助手</string>
     <string name="widget_preview_hint">导入课表后显示时间与教室</string>
     <string name="creator_credit">xiaoyle 制作</string>

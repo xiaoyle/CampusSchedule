@@ -1,0 +1,4 @@
+import{chromium,expect}from'@playwright/test';
+const b=await chromium.launch({channel:'msedge'}),c=await b.newContext({viewport:{width:390,height:844}}),p=await c.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));
+try{const r=await p.goto('https://xiaoyle.github.io/CampusSchedule/',{waitUntil:'domcontentloaded',timeout:45000});console.log('HTTPS',r.status());await p.getByRole('button',{name:'导入我的课表'}).waitFor({timeout:180000});console.log('title',await p.title());await p.waitForFunction(()=>navigator.serviceWorker.controller!==null,{},{timeout:180000});console.log('Offline shell registered');await c.setOffline(true);await p.reload();await p.getByRole('button',{name:'导入我的课表'}).waitFor();console.log('Public HTTPS offline reload passed');console.log('runtime errors',errors.length)}finally{await b.close()}
+
