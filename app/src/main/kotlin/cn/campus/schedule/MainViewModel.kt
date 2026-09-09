@@ -8,6 +8,8 @@ import cn.campus.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.InputStream
+import java.time.Instant
+import android.os.SystemClock
 
 fun InputStream.readLimited(limit: Int = 8 * 1024 * 1024): ByteArray {
     val output = java.io.ByteArrayOutputStream()
@@ -36,6 +38,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: error("无法打开文件，请先把文件保存到手机")
         parse(bytes, monday)
     }
+    fun importSchool(token: String) = task {
+        val result = SchoolImportCache.consume(application, token)
+        baseline = application.store.read()
+        preview.value = result
+    }
     private suspend fun parse(bytes: ByteArray, monday: String) {
         val result = ScheduleFileImporter.parse(application, bytes, monday)
         baseline = application.store.read()
@@ -56,6 +63,178 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         application.store.update { state -> state.copy(edits = state.edits.filterNot { it.ruleId == edit.ruleId && it.originalDate == edit.originalDate } + edit) }
         message.value = "本次课程已更新"
         withContext(Dispatchers.Main) { onSuccess() }
+        refreshAfterSave()
+    }
+    fun editWithColor(edit: LessonEdit, color: Long?, onSuccess: () -> Unit = {}) = task {
+        ScheduleEngine.validateEdit(edit)
+        application.store.update { state -> state.copy(
+            edits=state.edits.filterNot { it.ruleId==edit.ruleId && it.originalDate==edit.originalDate }+edit,
+            courseColors=if(color==null) state.courseColors-edit.ruleId else state.courseColors+(edit.ruleId to color)
+        ) }
+        message.value="本次课程已更新"
+        withContext(Dispatchers.Main) {onSuccess()}
+        refreshAfterSave()
+    }
+    fun saveManual(lesson: ManualLesson, onSuccess: () -> Unit = {}) = task {
+        ScheduleEngine.validateManualLesson(lesson)
+        application.store.update {state->state.copy(manualLessons=state.manualLessons.filterNot{it.id==lesson.id}+lesson)}
+        message.value=if(_data.value.manualLessons.any{it.id==lesson.id}) "自建课程已更新" else "单次课程已添加"
+        withContext(Dispatchers.Main){onSuccess()}
+        refreshAfterSave()
+    }
+    fun deleteManual(lesson: ManualLesson, onSuccess: () -> Unit = {}) = task {
+        application.store.update {state->state.copy(manualLessons=state.manualLessons.filterNot{it.id==lesson.id})}
+        withContext(Dispatchers.Main){onSuccess()}
+        refreshAfterSave()
+    }
+    fun saveStudyTask(studyTask: StudyTask, onSuccess: () -> Unit = {}) = task {
+        StudyTaskEngine.validate(studyTask)
+        val existed=_data.value.studyTasks.any { it.id==studyTask.id }
+        application.store.update { state ->
+            state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.filterNot { it.id==studyTask.id }+studyTask))
+        }
+        message.value=if(existed) "待办已更新" else "待办已添加"
+        withContext(Dispatchers.Main) { onSuccess() }
+        refreshAfterSave()
+    }
+    fun saveStudyTaskOccurrence(studyTask: StudyTask, occurrence: TaskOccurrence, entireSeries: Boolean, onSuccess: () -> Unit = {}) = task {
+        val changed = if (entireSeries || !occurrence.repeated) studyTask.copy(
+            id=occurrence.taskId,
+            completedAt=if(occurrence.repeated) null else occurrence.completedAt,
+            instanceStates=_data.value.studyTasks.firstOrNull {it.id==occurrence.taskId}?.instanceStates.orEmpty(),
+            createdAt=_data.value.studyTasks.firstOrNull {it.id==occurrence.taskId}?.createdAt ?: studyTask.createdAt
+        ) else {
+            val current=_data.value.studyTasks.first {it.id==occurrence.taskId}
+            val state=TaskInstanceState(
+                occurrenceKey=occurrence.key,
+                completedAt=occurrence.completedAt,
+                completedSubtaskIds=occurrence.completedSubtaskIds.toList(),
+                override=TaskInstanceOverride(
+                    studyTask.title,studyTask.type,studyTask.courseRuleId,studyTask.courseTitle,
+                    studyTask.dueAt ?: error("本次任务需要截止时间"),studyTask.priority,studyTask.note,
+                    studyTask.remindBeforeMinutes,studyTask.subtasks
+                )
+            )
+            current.copy(instanceStates=current.instanceStates.filterNot {it.occurrenceKey==occurrence.key}+state)
+        }
+        StudyTaskEngine.validate(changed)
+        application.store.update {state->state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.filterNot {it.id==occurrence.taskId}+changed))}
+        message.value="待办已更新"
+        withContext(Dispatchers.Main){onSuccess()}
+        refreshAfterSave()
+    }
+    fun completeStudyTask(studyTask: StudyTask, completed: Boolean, onSuccess: () -> Unit = {}) = task {
+        val changed=studyTask.copy(completedAt=if(completed) Instant.now().toString() else null)
+        application.store.update { state ->
+            state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.map { if(it.id==studyTask.id) changed else it }))
+        }
+        message.value=if(completed) "任务已完成" else "任务已恢复"
+        withContext(Dispatchers.Main) { onSuccess() }
+        refreshAfterSave()
+    }
+    fun completeTaskOccurrence(occurrence:TaskOccurrence,completed:Boolean,onSuccess:()->Unit={})=task {
+        application.store.update {state->state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.map {task->
+            if(task.id!=occurrence.taskId) task
+            else if(!occurrence.repeated) {
+                val old=task.instanceStates.firstOrNull{it.occurrenceKey==occurrence.key}
+                val changed=(old?:TaskInstanceState(occurrence.key)).copy(completedSubtaskIds=if(completed)occurrence.subtasks.map{it.id}else old?.completedSubtaskIds.orEmpty())
+                task.copy(completedAt=if(completed)Instant.now().toString() else null,instanceStates=task.instanceStates.filterNot{it.occurrenceKey==occurrence.key}+changed)
+            }
+            else {
+                val old=task.instanceStates.firstOrNull {it.occurrenceKey==occurrence.key}
+                val changed=(old ?: TaskInstanceState(occurrence.key)).copy(completedAt=if(completed)Instant.now().toString() else null,completedSubtaskIds=if(completed)occurrence.subtasks.map{it.id}else old?.completedSubtaskIds.orEmpty())
+                task.copy(instanceStates=task.instanceStates.filterNot {it.occurrenceKey==occurrence.key}+changed)
+            }
+        }))}
+        message.value=if(completed)"任务已完成" else "任务已恢复"
+        withContext(Dispatchers.Main){onSuccess()}
+        refreshAfterSave()
+    }
+    fun toggleSubtask(occurrence:TaskOccurrence,subtaskId:String,completed:Boolean)=task {
+        application.store.update {state->state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.map {task->
+            if(task.id!=occurrence.taskId)task else {
+                val old=task.instanceStates.firstOrNull {it.occurrenceKey==occurrence.key}
+                val ids=(old?.completedSubtaskIds.orEmpty().toSet().let {if(completed)it+subtaskId else it-subtaskId}).toList()
+                val changed=(old ?: TaskInstanceState(occurrence.key)).copy(completedSubtaskIds=ids)
+                task.copy(instanceStates=task.instanceStates.filterNot {it.occurrenceKey==occurrence.key}+changed)
+            }
+        }))}
+        refreshAfterSave()
+    }
+    fun deleteTaskOccurrence(occurrence:TaskOccurrence,entireSeries:Boolean,onSuccess:()->Unit={})=task {
+        application.store.update {state->
+            if(entireSeries||!occurrence.repeated) state.copy(studyTasks=state.studyTasks.filterNot {it.id==occurrence.taskId})
+            else state.copy(studyTasks=StudyTaskEngine.sorted(state.studyTasks.map {task->
+                if(task.id!=occurrence.taskId)task else {
+                    val old=task.instanceStates.firstOrNull {it.occurrenceKey==occurrence.key}
+                    val changed=(old ?: TaskInstanceState(occurrence.key)).copy(deleted=true)
+                    task.copy(instanceStates=task.instanceStates.filterNot {it.occurrenceKey==occurrence.key}+changed)
+                }
+            }))
+        }
+        withContext(Dispatchers.Main){onSuccess()}
+        refreshAfterSave()
+    }
+    fun deleteStudyTask(studyTask: StudyTask, onSuccess: () -> Unit = {}) = task {
+        application.store.update { state -> state.copy(studyTasks=state.studyTasks.filterNot { it.id==studyTask.id }) }
+        withContext(Dispatchers.Main) { onSuccess() }
+        refreshAfterSave()
+    }
+    fun clearCompletedTasks(onSuccess: () -> Unit = {}) = task {
+        application.store.update { state -> state.copy(studyTasks=state.studyTasks.mapNotNull { item->
+            if(item.repeatRule==null) item.takeIf {it.completedAt==null}
+            else item.copy(instanceStates=item.instanceStates.map {instance->if(instance.completedAt!=null)instance.copy(completedAt=null,deleted=true) else instance})
+        }) }
+        message.value="已清除完成记录"
+        withContext(Dispatchers.Main) { onSuccess() }
+        refreshAfterSave()
+    }
+    fun saveLearningGoal(target:Int)=task {
+        require(target in 1..30)
+        application.store.update {it.copy(learningGoal=LearningGoal(target))}
+        message.value="每周目标已保存"
+        refreshAfterSave()
+    }
+    fun saveFocusGoal(target:Int)=task {
+        require(target in 30..2100&&target%30==0){"每周专注目标须为30分钟的倍数"}
+        application.store.update{it.copy(focusSettings=it.focusSettings.copy(weeklyMinutesTarget=target))}
+        message.value="专注目标已保存"
+    }
+    fun startFocus(title:String,mode:FocusMode,minutes:Int?,sound:AmbientSound,volume:Float,courseId:String?=null,taskId:String?=null,occurrenceKey:String?=null,onSuccess:()->Unit={})=task {
+        require(title.trim().isNotEmpty()){"请填写专注目标"}
+        require(mode==FocusMode.STOPWATCH||minutes in 1..180){"倒计时须为1至180分钟"}
+        val now=Instant.now();val active=ActiveFocusState(
+            id=java.util.UUID.randomUUID().toString(),mode=mode,title=title.trim().take(60),courseRuleId=courseId,taskId=taskId,taskOccurrenceKey=occurrenceKey,
+            plannedSeconds=minutes?.times(60L),startedAt=now.toString(),runStartedAt=now.toString(),runStartedElapsedMs=SystemClock.elapsedRealtime(),ambientSound=sound,volume=volume.coerceIn(0f,1f)
+        );FocusEngine.validate(active)
+        application.store.update{state->require(state.activeFocus==null){"已有专注正在进行"};state.copy(activeFocus=active,focusSettings=state.focusSettings.copy(lastMinutes=minutes?:state.focusSettings.lastMinutes,ambientSound=sound,ambientVolume=volume.coerceIn(0f,1f)))}
+        FocusRuntime.refresh(application);withContext(Dispatchers.Main){onSuccess()}
+    }
+    fun pauseFocus()=task {val current=application.store.read().activeFocus?:return@task;application.store.update{it.copy(activeFocus=FocusEngine.pause(current,Instant.now(),SystemClock.elapsedRealtime()))};FocusRuntime.refresh(application)}
+    fun resumeFocus()=task {val current=application.store.read().activeFocus?:return@task;application.store.update{it.copy(activeFocus=FocusEngine.resume(current,Instant.now(),SystemClock.elapsedRealtime()))};FocusRuntime.refresh(application)}
+    fun finishFocus(status:FocusStatus=FocusStatus.STOPPED,onSuccess:(FocusSession)->Unit={})=task {
+        val current=application.store.read().activeFocus?:return@task;FocusRuntime.complete(application,current,status)
+        val session=application.store.read().focusSessions.lastOrNull{it.id==current.id}?:return@task
+        withContext(Dispatchers.Main){onSuccess(session)}
+    }
+    fun deleteFocusSession(id:String)=task {application.store.update{state->AchievementEngine.evaluate(state.copy(focusSessions=state.focusSessions.filterNot{it.id==id})).first};message.value="专注记录已删除";StudyWidget().updateAllSafe(application)}
+    fun saveCustomAchievement(definition:AchievementDefinition,onSuccess:()->Unit={})=task {
+        require(!definition.builtIn){"内置成就不能修改"};require(definition.name.trim().length in 1..12){"成就名称须为1至12字"};require(definition.description.length<=40){"成就说明不能超过40字"}
+        require(definition.unlockMode==AchievementUnlockMode.MANUAL||definition.metric!=null){"请选择自动解锁条件"};require(definition.target>0){"目标数值须大于0"}
+        application.store.update{state->require(state.customAchievements.any{it.id==definition.id}||state.customAchievements.size<50){"最多创建50个自定义成就"};AchievementEngine.evaluate(state.copy(customAchievements=state.customAchievements.filterNot{it.id==definition.id}+definition)).first}
+        message.value="成就已保存";withContext(Dispatchers.Main){onSuccess()}
+    }
+    fun manualUnlockAchievement(id:String)=task {application.store.update{AchievementEngine.manualUnlock(it,id)};message.value="成就已点亮"}
+    fun resetAchievement(id:String)=task {application.store.update{state->state.copy(achievementProgress=state.achievementProgress.filterNot{it.achievementId==id},featuredAchievementIds=state.featuredAchievementIds-id)};message.value="成就已重置"}
+    fun deleteAchievement(id:String,onSuccess:()->Unit={})=task {application.store.update{state->state.copy(customAchievements=state.customAchievements.filterNot{it.id==id},achievementProgress=state.achievementProgress.filterNot{it.achievementId==id},featuredAchievementIds=state.featuredAchievementIds-id)};withContext(Dispatchers.Main){onSuccess()};message.value="自定义成就已删除"}
+    fun restoreAchievement(definition:AchievementDefinition,progress:AchievementProgress?,featured:Boolean)=task {application.store.update{state->state.copy(customAchievements=state.customAchievements.filterNot{it.id==definition.id}+definition,achievementProgress=state.achievementProgress.filterNot{it.achievementId==definition.id}+listOfNotNull(progress),featuredAchievementIds=if(featured)(state.featuredAchievementIds+definition.id).distinct().takeLast(3) else state.featuredAchievementIds)};message.value="已撤销删除"}
+    fun featureAchievement(id:String,featured:Boolean)=task {application.store.update{state->val ids=if(featured)(state.featuredAchievementIds+id).distinct().takeLast(3) else state.featuredAchievementIds-id;state.copy(featuredAchievementIds=ids)};message.value="精选徽章已更新"}
+    fun moveFeaturedAchievement(id:String,direction:Int)=task {application.store.update{state->val ids=state.featuredAchievementIds.toMutableList();val from=ids.indexOf(id);val to=(from+direction).coerceIn(0,ids.lastIndex);if(from>=0&&from!=to){val value=ids.removeAt(from);ids.add(to,value)};state.copy(featuredAchievementIds=ids)};message.value="精选顺序已更新"}
+    fun markCelebrationSeen(id:String)=viewModelScope.launch(Dispatchers.IO){application.store.update{state->state.copy(achievementProgress=state.achievementProgress.map{if(it.achievementId==id)it.copy(celebrationSeen=true)else it})}}
+    fun cancel(lesson: Occurrence, onSuccess: () -> Unit = {}) = task {
+        val edit=LessonEdit(lesson.ruleId,lesson.originalDate,cancelled=true,date=lesson.date.toString(),start=lesson.start.toString(),end=lesson.end.toString())
+        application.store.update {state->state.copy(edits=state.edits.filterNot{it.ruleId==edit.ruleId&&it.originalDate==edit.originalDate}+edit)}
+        withContext(Dispatchers.Main){onSuccess()}
         refreshAfterSave()
     }
     fun restore(lesson: Occurrence, onSuccess: () -> Unit = {}) = task {
@@ -81,7 +260,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     private suspend fun refreshAfterSave() {
         AlarmPlaybackService.stop(application)
-        application.getSystemService(android.app.NotificationManager::class.java).cancelAll()
+        application.store.update {AchievementEngine.evaluate(it).first}
         runCatching { ReminderScheduler.refresh(application) }.onFailure {
             RecoveryWorker.once(application)
             message.value = "数据已保存；桌面与提醒刷新待重试，请重新打开应用"

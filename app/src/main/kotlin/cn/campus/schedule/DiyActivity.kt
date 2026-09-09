@@ -45,7 +45,7 @@ class DiyActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { CampusTheme { DiyEditor(this) } }
+        setContent { val settings=remember {PersonalizationStore.read(this)}; CampusTheme(settings.themeMode) { DiyEditor(this) } }
     }
 }
 
@@ -82,8 +82,8 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
             scope.launch {
                 try {
                     val name=withContext(Dispatchers.IO) { DiyStore.importImage(activity,uri) }
-                    if(target) next=next.copy(enabled=true,image=name,zoom=1f,x=.5f,y=.5f)
-                    else today=today.copy(enabled=true,image=name,zoom=1f,x=.5f,y=.5f)
+                    if(target) next=next.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f)
+                    else today=today.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f)
                 } catch(e: Exception) { error=e.message ?: "图片读取失败，请重新选择" }
                 finally { busy=false }
             }
@@ -132,6 +132,12 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
                         FilterChip(style.enabled && style.kind==key,{if(!busy) change(style.copy(kind=key))},label={Text(label)})
                     }
                 }
+                Text("内置电影感海报",style=MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    listOf("scene_statue" to "仰望","scene_sky" to "日月","scene_window" to "窗边").forEach { (key,label) ->
+                        FilterChip(style.enabled && style.kind==key,{if(!busy)change(style.copy(kind=key,image=""))},label={Text(label)})
+                    }
+                }
                 Button(onClick={picker.launch(arrayOf("image/*"))},enabled=!busy,modifier=Modifier.fillMaxWidth()){Text(if(style.image.isBlank()) "从相册选一张背景图" else "更换背景图片")}
                 Text("图片仅存本机。支持 JPG / PNG / WebP 等系统可读取图片，最大 24 MB。",style=MaterialTheme.typography.bodySmall)
                 if(style.image.isNotBlank()) {
@@ -177,7 +183,7 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
                     }
                 }
                 TextButton(onClick={if(compact)next=DiyStyle() else today=DiyStyle()},enabled=!busy){Text("当前组件恢复默认外观")}
-                Text("xiaoyle 制作 · 0.3.0\n相同类型的桌面组件共用一套搭配。修改外观不会改变课表和提醒。",style=MaterialTheme.typography.bodySmall)
+                Text("xiaoyle 制作 · "+appVersionName(activity)+"\n相同类型的桌面组件共用一套搭配。内置场景在组件中使用静态海报，修改外观不会改变课表和提醒。",style=MaterialTheme.typography.bodySmall)
             }
         }
     }

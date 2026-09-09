@@ -31,9 +31,11 @@ class ScheduleApp : Application() {
     val store by lazy { Store(this) }
     override fun onCreate() {
         super.onCreate()
+        scope.launch { runCatching { SchoolImportCache.cleanup(this@ScheduleApp) } }
         ReminderScheduler.createChannel(this)
+        FocusRuntime.channels(this)
         RecoveryWorker.install(this)
-        scope.launch { runCatching { ReminderScheduler.refresh(this@ScheduleApp) } }
+        scope.launch { runCatching { store.update{AchievementEngine.evaluate(it).first};ReminderScheduler.refresh(this@ScheduleApp); FocusRuntime.refresh(this@ScheduleApp) } }
     }
 }
 val Context.scheduleApp get() = applicationContext as ScheduleApp

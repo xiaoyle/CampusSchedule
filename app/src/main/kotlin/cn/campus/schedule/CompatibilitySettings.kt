@@ -42,6 +42,9 @@ import java.time.format.DateTimeFormatter
                 "电池优化" -> TextButton(onClick={open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}) { Text("检查电池优化") }
             }
         }
+        Text("课业待办通知渠道",fontWeight=FontWeight.Bold)
+        Text(if(ReminderScheduler.taskNotificationsAllowed(context))"已开启" else "需要设置，待办提醒可能无法显示")
+        TextButton(onClick={open(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID,ReminderScheduler.TASK_CHANNEL))}) { Text("检查课业待办渠道") }
         Text("厂商自启动与后台活动：请手动检查。已授权不代表锁屏待机提醒一定准时。",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={
             onMessage(if(ReminderScheduler.notify(context,7,"课前提醒测试","测试通知已提交，请核对声音和锁屏显示。")) "测试通知已提交，请检查手机是否收到" else "请先开启应用通知和课前提醒通知渠道")

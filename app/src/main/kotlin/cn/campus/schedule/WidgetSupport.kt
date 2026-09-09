@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import cn.campus.core.PhoneGuide
 
 object WidgetSupport {
-    private val receivers=listOf(NextWidgetReceiver::class.java,TodayWidgetReceiver::class.java)
+    private val receivers=listOf(NextWidgetReceiver::class.java,TodayWidgetReceiver::class.java,StudyWidgetReceiver::class.java)
     fun count(context: Context): Int? = runCatching {
         val own=AppWidgetManager.getInstance(context).installedProviders.map { it.provider }.toSet()
         receivers.count {ComponentName(context,it) in own}
@@ -37,7 +37,7 @@ object WidgetSupport {
     val count=remember(tick,check) { WidgetSupport.count(context) }
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text(WidgetSupport.help(PhoneGuide.detect(Build.MANUFACTURER,Build.BRAND)),style=MaterialTheme.typography.bodySmall)
-        Text(when(count) { 2 -> "系统已登记 2 个课表组件；是否展示由当前桌面决定"; null -> "无法读取组件登记状态"; else -> "系统登记了 $count / 2 个组件，请重新打开应用后检查" },style=MaterialTheme.typography.bodySmall)
+        Text(when(count) { 3 -> "系统已登记 3 个桌面组件；是否展示由当前桌面决定"; null -> "无法读取组件登记状态"; else -> "系统登记了 $count / 3 个组件，请重新打开应用后检查" },style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={check++;onMessage("已重新检查组件登记状态")}) {Text("检查桌面组件")}
         Text("找不到时：先打开本应用一次，确认与桌面处于同一主空间，再重启手机检查。请预留桌面空位。通过安卓兼容容器运行时，原生鸿蒙桌面可能不提供这些组件；请反馈具体型号和系统版本。",style=MaterialTheme.typography.bodySmall)
     }

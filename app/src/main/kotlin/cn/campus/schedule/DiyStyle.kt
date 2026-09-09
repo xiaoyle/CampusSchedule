@@ -105,14 +105,16 @@ object DiyRenderer {
         val canvas = Canvas(result)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         canvas.drawColor(if(style.kind == "notes") 0xFFF5EEDC.toInt() else 0xFF153D3B.toInt())
-        val source = DiyStore.imageFile(c, style.image)?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
+        val builtIn=style.kind.startsWith("scene_")
+        if(builtIn) drawScene(canvas,paint,w,h,style.kind)
+        val source = if(builtIn)null else DiyStore.imageFile(c, style.image)?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
         if(source != null) {
             val scale = max(w.toFloat()/source.width, h.toFloat()/source.height) * style.zoom.coerceIn(1f, 3f)
             val sw=source.width * scale; val sh=source.height * scale
             val left=(w-sw)*style.x.coerceIn(0f,1f); val top=(h-sh)*style.y.coerceIn(0f,1f)
             canvas.drawBitmap(source, null, RectF(left, top, left+sw, top+sh), paint)
             source.recycle()
-        } else {
+        } else if(!builtIn) {
             paint.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(), intArrayOf(0xFF173E43.toInt(), style.accent.toInt(), 0xFF285F53.toInt()), null, Shader.TileMode.CLAMP)
             canvas.drawRect(0f,0f,w.toFloat(),h.toFloat(),paint); paint.shader=null
         }
@@ -143,5 +145,28 @@ object DiyRenderer {
         paint.alpha=(style.opacity.coerceIn(.15f,1f)*255).toInt()
         out.drawBitmap(result,0f,0f,paint); result.recycle()
         return output
+    }
+
+    private fun drawScene(canvas:Canvas,paint:Paint,w:Int,h:Int,kind:String) {
+        fun gradient(colors:IntArray) {paint.shader=LinearGradient(0f,0f,w.toFloat(),h.toFloat(),colors,null,Shader.TileMode.CLAMP);canvas.drawRect(0f,0f,w.toFloat(),h.toFloat(),paint);paint.shader=null}
+        when(kind) {
+            "scene_sky" -> {
+                gradient(intArrayOf(0xFF102C55.toInt(),0xFF4893AF.toInt(),0xFFE8B66D.toInt()))
+                paint.color=0xFFFFD98D.toInt();canvas.drawCircle(w*.75f,h*.22f,minOf(w,h)*.12f,paint)
+                paint.color=Color.argb(42,255,255,255);repeat(4){i->canvas.drawOval(RectF(w*(.05f+i*.22f),h*(.18f+i*.13f),w*(.4f+i*.22f),h*(.24f+i*.13f)),paint)}
+            }
+            "scene_window" -> {
+                gradient(intArrayOf(0xFFF0C08F.toInt(),0xFF618F9C.toInt(),0xFF173D40.toInt()))
+                paint.color=0xFF183A35.toInt();canvas.drawRect(w*.1f,0f,w*.14f,h.toFloat(),paint);canvas.drawRect(w*.62f,0f,w*.66f,h*.75f,paint);canvas.drawRect(0f,h*.34f,w*.72f,h*.38f,paint)
+                paint.color=0xFF202C31.toInt();canvas.drawOval(RectF(w*.62f,h*.35f,w*.88f,h*.76f),paint)
+                paint.color=0xFFE9DED0.toInt();canvas.drawOval(RectF(w*.54f,h*.55f,w*.94f,h*1.02f),paint)
+                paint.color=0xFFE4B494.toInt();canvas.drawCircle(w*.72f,h*.43f,minOf(w,h)*.075f,paint)
+            }
+            else -> {
+                gradient(intArrayOf(0xFF83BCD0.toInt(),0xFFF2CEA0.toInt(),0xFF174239.toInt()))
+                paint.color=0xFFFFE3A7.toInt();canvas.drawCircle(w*.78f,h*.18f,minOf(w,h)*.1f,paint)
+                paint.color=0xFF29443E.toInt();canvas.drawRect(w*.14f,h*.75f,w*.86f,h*.94f,paint);canvas.drawOval(RectF(w*.38f,h*.3f,w*.62f,h*.76f),paint);canvas.drawCircle(w*.5f,h*.29f,minOf(w,h)*.085f,paint)
+            }
+        }
     }
 }

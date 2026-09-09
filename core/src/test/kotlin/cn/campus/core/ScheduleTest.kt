@@ -71,4 +71,67 @@ class ScheduleTest {
         assertEquals(setOf(source.key, other.key), ScheduleEngine.conflicts(listOf(source, other)))
         assertTrue(ScheduleEngine.conflicts(listOf(source, other.copy(start=source.end, end=source.end.plusHours(1)))) .isEmpty())
     }
+
+    @Test fun manualSingleLessonWorksWithoutImportedSchedule() {
+        val manual=ManualLesson("personal-1","2026-09-09","自习","19:00","20:30",location="图书馆",color=0xFF126B91)
+        val occurrence=ScheduleEngine.occurrences(AppData(manualLessons=listOf(manual))).single()
+        assertTrue(occurrence.manual)
+        assertEquals("图书馆",occurrence.locationText)
+        assertEquals(LocalDate.parse("2026-09-09"),occurrence.date)
+        assertEquals(0xFF126B91,occurrence.color)
+        assertFailsWith<IllegalArgumentException> {ScheduleEngine.validateManualLesson(manual.copy(end="18:00"))}
+    }
+
+    @Test fun oldStateDecodesWithEmptyStudyTasks() {
+        val oldJson="""{"schedule":null,"edits":[],"reminderMinutes":10,"importedAt":null,"alarmEnabled":true,"manualLessons":[],"courseColors":{}}"""
+        val state=dataJson.decodeFromString<AppData>(oldJson)
+        assertTrue(state.studyTasks.isEmpty())
+        assertEquals(5,state.learningGoal.weeklyTarget)
+    }
+
+    @Test fun studyTasksValidateSortAndScheduleReminder() {
+        val later=StudyTask("later","线代作业",dueAt="2026-09-10T22:00",remindBeforeMinutes=60,createdAt="2026-09-09T00:00:00Z")
+        val sooner=StudyTask("soon","英语作业",dueAt="2026-09-10T20:00",priority=StudyTaskPriority.URGENT,createdAt="2026-09-09T00:00:00Z")
+        val open=StudyTask("open","阅读第五章",type=StudyTaskType.REVIEW,createdAt="2026-09-09T00:00:00Z")
+        listOf(later,sooner,open).forEach(StudyTaskEngine::validate)
+        assertEquals(listOf("soon","later","open"),StudyTaskEngine.sorted(listOf(open,later,sooner)).map {it.id})
+        assertEquals(Instant.parse("2026-09-10T13:00:00Z"),StudyTaskEngine.reminderAt(later))
+        assertFailsWith<IllegalArgumentException> {StudyTaskEngine.validate(open.copy(remindBeforeMinutes=10))}
+    }
+
+    @Test fun removedCourseKeepsTaskAsUnlinkedSnapshot() {
+        val task=StudyTask("task","完成报告",courseRuleId="missing",courseTitle="原课程",createdAt="2026-09-09T00:00:00Z")
+        val data=AppData(studyTasks=listOf(task))
+        assertFalse(StudyTaskEngine.courseExists(task,data))
+        assertEquals(task,StudyTaskEngine.sorted(data.studyTasks).single())
+    }
+
+    @Test fun repeatingTasksExpandWithoutWritingInstances() {
+        val daily=StudyTask("daily","背单词",dueAt="2026-09-07T20:00",repeatRule=TaskRepeatRule(TaskRepeatKind.DAILY,endsOn="2026-09-09"),createdAt="2026-09-01T00:00:00Z")
+        val weekly=StudyTask("weekly","周总结",dueAt="2026-09-07T21:00",repeatRule=TaskRepeatRule(TaskRepeatKind.WEEKLY,endsOn="2026-09-30"),createdAt="2026-09-01T00:00:00Z")
+        val custom=StudyTask("custom","跑步",dueAt="2026-09-07T07:00",repeatRule=TaskRepeatRule(TaskRepeatKind.CUSTOM_WEEKDAYS,listOf(2,4),"2026-09-13"),createdAt="2026-09-01T00:00:00Z")
+        listOf(daily,weekly,custom).forEach(StudyTaskEngine::validate)
+        assertEquals(3,StudyTaskEngine.occurrences(daily,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30")).size)
+        assertEquals(listOf(7,14,21,28),StudyTaskEngine.occurrences(weekly,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30")).map{it.dueAt!!.dayOfMonth})
+        assertEquals(listOf(8,10),StudyTaskEngine.occurrences(custom,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30")).map{it.dueAt!!.dayOfMonth})
+        assertTrue(daily.instanceStates.isEmpty())
+    }
+
+    @Test fun repeatedInstancesKeepIndependentProgressAndOverrides() {
+        val sub=StudySubtask("read","阅读",0)
+        val base=StudyTask("series","复习",dueAt="2026-09-07T20:00",subtasks=listOf(sub),remindBeforeMinutes=30,repeatRule=TaskRepeatRule(TaskRepeatKind.DAILY,endsOn="2026-09-09"),createdAt="2026-09-01T00:00:00Z")
+        val firstKey="series@2026-09-07T20:00"
+        val secondKey="series@2026-09-08T20:00"
+        val edited=base.copy(instanceStates=listOf(
+            TaskInstanceState(firstKey,completedAt="2026-09-07T12:00:00Z",completedSubtaskIds=listOf("read")),
+            TaskInstanceState(secondKey,override=TaskInstanceOverride("补做复习",StudyTaskType.REVIEW,null,"","2026-10-01T19:00",StudyTaskPriority.IMPORTANT,"",10,listOf(sub)))
+        ))
+        val september=StudyTaskEngine.occurrences(edited,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30"))
+        assertEquals("2026-09-07T12:00:00Z",september.single{it.key==firstKey}.completedAt)
+        assertFalse(september.any{it.key==secondKey})
+        val october=StudyTaskEngine.occurrences(edited,LocalDate.parse("2026-10-01"),LocalDate.parse("2026-10-31")).single()
+        assertEquals("补做复习",october.title)
+        assertEquals(LocalDate.parse("2026-10-01"),october.dueAt!!.toLocalDate())
+        assertEquals(Instant.parse("2026-10-01T10:50:00Z"),StudyTaskEngine.reminderAt(october))
+    }
 }

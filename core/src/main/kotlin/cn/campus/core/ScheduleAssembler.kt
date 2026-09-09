@@ -24,7 +24,7 @@ object ScheduleAssembler {
             val ambiguous = rules.count { it.variants.any { v -> v.candidates.size > 1 } }
             if (ambiguous > 0) add("$ambiguous 项课程含多个教师或教室，请在对应日期的课程详情中确认")
             if (rules.any { it.variants.any { v -> v.candidates.any { c -> c.location.isBlank() } } }) add("部分课程未提供地点，可在课程详情补充")
-            add("节假日与临时调课请按学校通知修改；文件不会自动更新")
+            add("节假日与临时调课请按学校通知修改；已导入课表不会自动更新")
         }
         return ImportResult(Schedule(term, firstMonday, periods, rules), warnings)
     }

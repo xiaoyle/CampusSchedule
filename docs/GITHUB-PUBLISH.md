@@ -1,59 +1,78 @@
-# GitHub 发布教程
+# GitHub 发布教程：安卓 APK 与 iPhone 网页版
 
-使用 GitHub Releases 发布安卓安装包，无需部署服务器，也不需要 GitHub Pages。
+项目使用一个公开仓库完成两类发布：仓库保存安卓与网页源码；GitHub Release 提供 APK；GitHub Pages 自动部署 `web/` 为 HTTPS PWA。
 
-## 1. 准备目录
+## 一、生成安全发布目录
 
-运行 `scripts/prepare-github.ps1` 会在 dist 中生成一个带时间戳的 `github-release-*` 文件夹：
+在项目根目录运行：
 
-- `repository`：允许公开的源码与文档，上传到仓库。
-- `release-assets`：APK、源码 ZIP、校验文件，上传到 Release。
-- `发布说明.md`：创建 Release 时复制其中正文。
+```powershell
+./scripts/prepare-github.ps1
+```
 
-不要上传整个日常开发目录，也不要把 APK 放进仓库 Code 中。私有课表、签名文件、工具与缓存均不在公开目录内。
+脚本会在 `dist` 下生成 `github-release-0.8.0-时间`，其中：
 
-## 2. 创建 GitHub 仓库
+- `repository/`：可公开上传的源码和文档，包含安卓工程、`web/` 和 Pages 工作流。
+- `release-assets/`：APK、安卓源码 ZIP、SHA-256 校验文件。
+- `发布说明.md`：创建 Release 时粘贴。
+
+脚本采用允许列表，不复制 `private-fixtures`、构建缓存、APK、签名私钥、环境变量或本机工具。不要把整个日常开发目录上传。
+
+## 二、创建仓库
 
 1. 登录 GitHub，点击右上角 `+` → `New repository`。
-2. Repository name 填 `CampusSchedule`；描述填 `中大课表助手：安卓课表导入、桌面组件与 DIY · xiaoyle 制作`。
-3. 选择 `Public`，表示所有人都能看见源码和下载公开 Release。
-4. 不勾选初始化 README，不另选 .gitignore，也先不选择许可证，点击 `Create repository`。
+2. Repository name 填 `CampusSchedule`。
+3. Description 可填：`中大课表助手：课表导入、学习计划、专注复盘与桌面组件`。
+4. 选择 `Public`。
+5. 不初始化 README、`.gitignore` 或许可证，直接创建空仓库。
 
-本次没有替作者选择 MIT / Apache 等源码授权。公开可见和授权他人修改、分发是不同决定；若希望开放源码授权，可之后明确选定许可证。依赖与 Gradle wrapper 的原有许可仍适用。
+仓库尚未指定源码许可证。公开可见并不自动允许他人复制、修改和再分发；决定开放许可后再添加合适的 LICENSE。
 
-## 3. 上传源码（网页操作）
+## 三、上传源码
 
-1. 在空仓库页面点击 `uploading an existing file`；已有内容时点击 `Add file` → `Upload files`。
-2. 打开准备目录中的 `repository`，全选其中的文件和子文件夹，拖入网页。注意上传的是里面的内容，不是外层 repository 文件夹，更不是 ZIP。
-3. 检查根目录直接显示 `README.md`、`app`、`core`、`gradle`、`scripts` 等。应包括 `.gitignore` 和 `.github`。
-4. Commit message 填 `Prepare v0.3.0 DIY preview release`，点击 `Commit changes`。
+推荐使用 GitHub Desktop：
 
-网页上传若因文件数量或网络失败，可分批上传文件夹；APK 不使用这个入口。也可用 GitHub Desktop 导入 repository 目录后提交发布。不要提交访问令牌或签名私钥。
+1. 打开 GitHub Desktop，选择 `File` → `Add local repository`。
+2. 选择发布目录中的 `repository/`。若提示还不是仓库，选择创建仓库。
+3. 提交信息填写 `Release v0.8.0 focus and achievements`。
+4. 点击 `Publish repository`，名称使用 `CampusSchedule`，取消 `Keep this code private`。
 
-## 4. 创建可下载版本
+也可在 GitHub 空仓库页面选择 `uploading an existing file`，将 `repository/` **内部的内容**拖入页面。上传后仓库根目录应直接看到 `README.md`、`app/`、`core/`、`web/` 和 `.github/`。
 
-1. 仓库首页右侧找到 `Releases` → `Create a new release`（也可能显示 `Draft a new release`）。
-2. Tag 填 `v0.3.0`，选择创建新标签；Target 选已上传源码的默认分支。
-3. 标题填 `中大课表助手 v0.3.0 · 桌面 DIY 试用版`。
-4. 将准备目录内 `发布说明.md` 的正文复制到说明框。
-5. 将 `release-assets` 里面的 APK、源码 ZIP 和 SHA256 校验文件拖到附件区域，等待三个文件上传完成。
-6. 勾选 `Set as a pre-release`。先点击 `Save draft` 检查内容，再点击 `Publish release`。
+## 四、启用 GitHub Pages
 
-这里发布的是当前本机已验证签名的 APK。不要使用 GitHub Actions 临时生成的默认 debug APK 替换它，不同签名会让已有安装无法直接覆盖更新。
+1. 进入仓库 `Settings` → `Pages`。
+2. 在 `Build and deployment` 的 `Source` 中选择 `GitHub Actions`。
+3. 进入仓库 `Actions`，打开 `Deploy timetable web app`。
+4. 首次上传通常会自动运行；没有运行时点击 `Run workflow`。
+5. 等 build 和 deploy 都变绿后，访问 `https://xiaoyle.github.io/CampusSchedule/`。
 
-## 5. 发给同学
+工作流执行 `npm ci`、网页测试和 Vite 构建，再部署 `web/dist`。仓库名必须保持 `CampusSchedule`，否则还要同步修改 `web/vite.config.ts` 中的 `/CampusSchedule/` 路径。
 
-打开已发布的 Release，复制浏览器地址发给同学。提醒对方展开 Assets，下载 `CampusSchedule-0.3.0.apk`，不是 Source code。
+## 五、发布安卓 0.8.0
 
-发布后用未登录窗口确认页面和 APK 可访问。GitHub 自动生成的 Source code ZIP 不含 APK，APK 在 Release 附件中。
+1. 打开仓库右侧 `Releases` → `Draft a new release`。
+2. 新建标签 `v0.8.0`，Target 选择 `main`。
+3. 标题填写 `中大课表助手 v0.8.0 · 专注轨迹与成就馆`。
+4. 将发布目录中的 `发布说明.md` 粘贴到说明框。
+5. 从 `release-assets/` 上传：
+   - `CampusSchedule-0.8.0.apk`
+   - `CampusSchedule-source-0.8.0.zip`
+   - `SHA256SUMS-0.8.0.txt`
+6. 先选择 `Save draft`，确认三个附件都完整，再发布。当前仍是同学试用版本，建议勾选 `Set as a pre-release`。
 
-## 后续更新
+APK 应作为 Release 附件上传，不提交到仓库源码。GitHub 自动生成的 Source code 压缩包也不包含 APK。
 
-- 修复后增加 versionCode、更新版本号和发布说明，保留同一包名和相同签名，发布新的版本标签；不要静默替换已经发布的旧 APK。
-- 本机当前签名文件不要上传；请自行安全保存。正式面向更多用户发布前，再规划长期发布签名。
-- 当前准备工作不包含自动构建发布流水线、应用商店上架或原生鸿蒙版。
+## 六、发布后检查
 
-官方参考：
-- [管理 Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
-- [上传项目文件](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository)
-- [添加本地代码](https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github)
+- 使用未登录浏览器打开仓库 README、Release 和 Pages 地址。
+- 从 Release 的 Assets 下载 APK，确认文件名和大小正常。
+- iPhone Safari 打开 Pages，检查“添加到主屏幕”和离线启动。
+- Android 覆盖安装后确认版本显示 0.8.0、原课表仍存在。
+- 在 Issues 中提醒同学不要上传 NetID、密码、验证码、学号、原始课表或带个人信息的截图。
+
+## 后续版本
+
+每次发布先提升 `versionCode` 和 `versionName`，更新 README、CHANGELOG 与发布说明，使用同一长期签名构建新 APK，再创建新的 `vX.Y.Z` Release。不要替换已经公开版本的 APK；修复问题时发布新版本，便于用户确认来源和覆盖升级。
+
+官方参考：[添加本地代码](https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github)、[管理 Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)、[配置 GitHub Pages 发布源](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。

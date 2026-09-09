@@ -32,11 +32,11 @@ class CompatibilityTest {
             assertEquals(29,result.schedule.rules.size);assertEquals(17,result.schedule.lastWeek)
             runBlocking {context.scheduleApp.store.update {AppData(result.schedule,alarmEnabled=false)}}
         }
-        assertEquals(2,WidgetSupport.count(context))
+        assertEquals(3,WidgetSupport.count(context))
         val info=context.packageManager.getPackageInfo(context.packageName,PackageManager.GET_ACTIVITIES or PackageManager.GET_PERMISSIONS)
-        assertFalse(info.activities.orEmpty().any {it.name.endsWith("SchoolBrowserActivity")})
-        assertFalse(info.requestedPermissions.orEmpty().contains("android.permission.INTERNET"))
-        assertEquals("0.3.0",info.versionName)
+        assertTrue(info.activities.orEmpty().any {it.name.endsWith("SchoolBrowserActivity") && !it.exported})
+        assertTrue(info.requestedPermissions.orEmpty().contains("android.permission.INTERNET"))
+        assertEquals("0.8.0",info.versionName)
     }
     @Test fun diagnosticsAndSettingsFallback() {
         val health=ReminderHealth.read(context,-1,false)
@@ -52,9 +52,9 @@ class CompatibilityTest {
         val providers=context.getSystemService(android.appwidget.AppWidgetManager::class.java).installedProviders.filter {it.provider.packageName==context.packageName}
         assertTrue(providers.all {it.initialLayout!=0 && it.previewImage!=0})
     }
-    @Test fun settingsBrandSwitchAndDisabledLogin() {
-        compose.onNodeWithText("导入与设置",useUnmergedTree=true).performClick()
-        compose.onNodeWithText("打开学校登录").assertDoesNotExist()
+    @Test fun settingsBrandSwitchAndSchoolLogin() {
+        compose.onNodeWithText("设置",useUnmergedTree=true).performClick()
+        compose.onNodeWithText("从学校网页导入").assertExists()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("提醒检查"))
         compose.onNodeWithText("提醒检查").assertIsDisplayed()
         photo("checks-api${Build.VERSION.SDK_INT}.png")
@@ -63,8 +63,8 @@ class CompatibilityTest {
         compose.onNodeWithText("华为安卓").performClick()
         compose.onNodeWithText("当前指引：华为安卓 · 切换").assertExists()
         photo("guide-api${Build.VERSION.SDK_INT}.png")
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("xiaoyle 制作 · 非学校官方应用 · 0.3.0"))
-        compose.onNodeWithText("xiaoyle 制作 · 非学校官方应用 · 0.3.0").assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("xiaoyle 制作 · 非学校官方应用 · 0.8.0"))
+        compose.onNodeWithText("xiaoyle 制作 · 非学校官方应用 · 0.8.0").assertIsDisplayed()
     }
     @Test fun alarmAudioStartsAndStopsWithoutChangingSchedule() {
         Assume.assumeTrue(ReminderScheduler.notificationsAllowed(context))
