@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = '0.8.0'
+$version = '0.10.0'
 $apk = Join-Path $projectRoot "dist/CampusSchedule-$version.apk"
 if (-not (Test-Path -LiteralPath $apk)) { throw '请先构建并打包 APK，再准备 GitHub 发布目录。' }
 $destination = Join-Path $projectRoot ('dist/github-release-' + $version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

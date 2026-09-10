@@ -82,6 +82,44 @@ class ScheduleTest {
         assertFailsWith<IllegalArgumentException> {ScheduleEngine.validateManualLesson(manual.copy(end="18:00"))}
     }
 
+    @Test fun weeklyManualLessonsExpandWithStableKeysAndOldJsonDefaults() {
+        val two=ManualLesson("series","2026-09-07","芯片导论","08:00","09:40",repeatCount=2)
+        val twice=ScheduleEngine.occurrences(AppData(manualLessons=listOf(two)))
+        assertEquals(listOf("manual@series@0","manual@series@1"),twice.map{it.key})
+        assertEquals(listOf(7,14),twice.map{it.date.dayOfMonth})
+        assertEquals(2,twice.last().manualRepeatCount)
+        assertEquals(30,ScheduleEngine.occurrences(AppData(manualLessons=listOf(two.copy(repeatCount=30)))).size)
+        val old=dataJson.decodeFromString<ManualLesson>("""{"id":"old","date":"2026-09-07","title":"旧课程","start":"08:00","end":"08:45"}""")
+        assertEquals(1,old.repeatCount)
+        assertEquals("manual@old@0",ScheduleEngine.occurrences(AppData(manualLessons=listOf(old))).single().key)
+    }
+
+    @Test fun weeklyManualLessonSupportsInstanceAndFutureChanges() {
+        val base=ManualLesson("series","2026-09-07","电路","08:00","09:40",location="A",repeatCount=4)
+        val secondDraft=base.copy(date="2026-09-16",title="电路实验",start="10:10",end="11:50",location="B")
+        val one=ScheduleEngine.updateManualLesson(base,secondDraft,ManualLessonEditScope.INSTANCE,1)
+        val oneItems=ScheduleEngine.occurrences(AppData(manualLessons=listOf(one)))
+        assertEquals(LocalDate.parse("2026-09-16"),oneItems.single{it.manualIndex==1}.date)
+        assertEquals("电路",oneItems.single{it.manualIndex==2}.title)
+        val futureDraft=base.copy(date="2026-09-21",title="新电路",start="14:20",end="16:00",location="C")
+        val future=ScheduleEngine.updateManualLesson(base,futureDraft,ManualLessonEditScope.FUTURE,2)
+        val futureItems=ScheduleEngine.occurrences(AppData(manualLessons=listOf(future)))
+        assertEquals(listOf("电路","电路","新电路","新电路"),futureItems.map{it.title})
+        assertEquals(listOf(7,14,21,28),futureItems.map{it.date.dayOfMonth})
+        assertEquals("manual@series@2",futureItems[2].key)
+    }
+
+    @Test fun weeklyManualLessonDeletionScopesWork() {
+        val base=ManualLesson("series","2026-09-07","英语","08:00","09:40",repeatCount=5)
+        val one=ScheduleEngine.deleteManualLesson(base,ManualLessonEditScope.INSTANCE,2)!!
+        assertEquals(listOf(0,1,3,4),ScheduleEngine.occurrences(AppData(manualLessons=listOf(one))).map{it.manualIndex})
+        val future=ScheduleEngine.deleteManualLesson(base,ManualLessonEditScope.FUTURE,3)!!
+        assertEquals(3,future.repeatCount)
+        assertEquals(3,ScheduleEngine.occurrences(AppData(manualLessons=listOf(future))).size)
+        assertNull(ScheduleEngine.deleteManualLesson(base,ManualLessonEditScope.FUTURE,0))
+        assertNull(ScheduleEngine.deleteManualLesson(base,ManualLessonEditScope.SERIES,2))
+    }
+
     @Test fun oldStateDecodesWithEmptyStudyTasks() {
         val oldJson="""{"schedule":null,"edits":[],"reminderMinutes":10,"importedAt":null,"alarmEnabled":true,"manualLessons":[],"courseColors":{}}"""
         val state=dataJson.decodeFromString<AppData>(oldJson)
@@ -133,5 +171,20 @@ class ScheduleTest {
         assertEquals("补做复习",october.title)
         assertEquals(LocalDate.parse("2026-10-01"),october.dueAt!!.toLocalDate())
         assertEquals(Instant.parse("2026-10-01T10:50:00Z"),StudyTaskEngine.reminderAt(october))
+    }
+
+    @Test fun gapRadarReservesCourseBuffersAndPicksTaskThatFits() {
+        val now=ZonedDateTime.of(2026,9,7,9,0,0,0,SCHOOL_ZONE)
+        val lesson=Occurrence("c@2026-09-07","c","高等数学","2026-09-07",LocalDate.parse("2026-09-07"),LocalTime.of(10,0),LocalTime.of(11,0),emptyList(),false)
+        val urgent=StudyTask("urgent","短任务",dueAt="2026-09-07T18:00",priority=StudyTaskPriority.URGENT,estimatedMinutes=45,createdAt="2026-09-01T00:00:00Z")
+        val long=StudyTask("long","长任务",dueAt="2026-09-07T17:00",estimatedMinutes=90,createdAt="2026-09-01T00:00:00Z")
+        val tasks=StudyTaskEngine.occurrences(AppData(studyTasks=listOf(long,urgent)),LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30"))
+        val pick=assertNotNull(GapRadarEngine.recommend(now,listOf(lesson),tasks))
+        assertEquals(LocalTime.of(9,50),pick.gap.end.toLocalTime())
+        assertEquals("urgent",pick.task?.taskId)
+        assertEquals(45,pick.suggestedMinutes)
+        assertEquals(30,GapRadarEngine.effectiveMinutes(tasks.first().copy(estimatedMinutes=null)))
+        assertFailsWith<IllegalArgumentException>{StudyTaskEngine.validate(urgent.copy(estimatedMinutes=9))}
+        StudyTaskEngine.validate(urgent.copy(estimatedMinutes=180))
     }
 }

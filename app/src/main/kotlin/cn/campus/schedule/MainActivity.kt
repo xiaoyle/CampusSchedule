@@ -1,6 +1,7 @@
 package cn.campus.schedule
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.appwidget.AppWidgetManager
 import android.content.*
 import android.net.Uri
@@ -11,6 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -59,11 +63,15 @@ class MainActivity : ComponentActivity() {
     val personalMessage by personalizationVm.message.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(if(openTaskId==null)0 else 1) }
+    var tabHistory by rememberSaveable { mutableStateOf<List<Int>>(emptyList()) }
+    var lastBackAt by remember { mutableLongStateOf(0L) }
     var planTasks by rememberSaveable { mutableStateOf(openTaskId!=null) }
     var monday by rememberSaveable { mutableStateOf("2026-09-07") }
     var selected by remember { mutableStateOf<Occurrence?>(null) }
     var manualDialog by remember { mutableStateOf(false) }
     var editingManual by remember { mutableStateOf<ManualLesson?>(null) }
+    var editingManualOccurrence by remember { mutableStateOf<Occurrence?>(null) }
+    var manualPrefill by remember { mutableStateOf<ManualLesson?>(null) }
     var manualDate by remember { mutableStateOf(LocalDate.now(SCHOOL_ZONE)) }
     var taskDialog by remember { mutableStateOf(false) }
     var taskDraft by remember { mutableStateOf<StudyTask?>(null) }
@@ -80,8 +88,11 @@ class MainActivity : ComponentActivity() {
     var completedSession by remember { mutableStateOf<FocusSession?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
     var permissionTick by remember { mutableIntStateOf(0) }
+    val whatsNewPrefs=remember{activity.getSharedPreferences("whats_new",Context.MODE_PRIVATE)}
+    var showWhatsNew by remember {mutableStateOf(!whatsNewPrefs.getBoolean("shown_0_10",false))}
     val snackbar = remember { SnackbarHostState() }
     val scope=rememberCoroutineScope()
+    val pageStateHolder=rememberSaveableStateHolder()
     val owner = LocalLifecycleOwner.current
     val notificationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionTick++; vm.refreshReminders() }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { vm.importUri(it, monday) } }
@@ -92,8 +103,14 @@ class MainActivity : ComponentActivity() {
     val today = now.atZone(SCHOOL_ZONE).toLocalDate()
     val active = lessons.filterNot { it.cancelled }
     val conflicts = remember(lessons) { ScheduleEngine.conflicts(lessons) }
+    fun navigate(target:Int) {
+        if(target==tab)return
+        if(target==2&&tab>=3){tab=2;return}
+        tabHistory=tabHistory+tab
+        tab=target
+    }
     fun openLesson(lesson:Occurrence) {
-        if(lesson.manual) {editingManual=data.manualLessons.firstOrNull{it.id==lesson.ruleId};manualDate=lesson.date;manualDialog=true}
+        if(lesson.manual) {editingManual=data.manualLessons.firstOrNull{it.id==lesson.ruleId};editingManualOccurrence=lesson;manualPrefill=null;manualDate=lesson.date;manualDialog=true}
         else selected=lesson
     }
     fun newTask(courseId:String?=null,courseTitle:String="",date:LocalDate?=null) {
@@ -123,23 +140,31 @@ class MainActivity : ComponentActivity() {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     if(focusOpenState&&data.activeFocus!=null){val focusing=data.activeFocus!!;FocusTimerScreen(focusing,onBack={focusOpenState=false},onPause=vm::pauseFocus,onResume=vm::resumeFocus,onStop={vm.finishFocus(FocusStatus.STOPPED){if(focusing.mode!=FocusMode.BREAK)completedSession=it;focusOpenState=false}},onNaturalComplete={vm.finishFocus(FocusStatus.COMPLETED){if(focusing.mode!=FocusMode.BREAK)completedSession=it;focusOpenState=false}});return}
+    BackHandler {
+        when {
+            tab>=3->{tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)}
+            tab!=0->{val previous=tabHistory.lastOrNull()?:0;tabHistory=tabHistory.dropLast(1);tab=if(previous>=3)2 else previous}
+            else->{val moment=SystemClock.elapsedRealtime();if(moment-lastBackAt<=2000)activity.finish()else{lastBackAt=moment;scope.launch{snackbar.showSnackbar("再按一次退出")}}}
+        }
+    }
     Scaffold(snackbarHost={ SnackbarHost(snackbar) }, bottomBar={
         NavigationBar {
             listOf("今日" to Icons.Outlined.Today, "计划" to Icons.Outlined.CalendarMonth, "我的" to Icons.Outlined.Person).forEachIndexed { i, item ->
-                NavigationBarItem(selected=if(i==2)tab>=2 else tab==i, onClick={ tab=i }, icon={ Icon(item.second, contentDescription=null) }, label={ Text(item.first) })
+                NavigationBarItem(selected=if(i==2)tab>=2 else tab==i, onClick={ navigate(i) }, icon={ Icon(item.second, contentDescription=null) }, label={ Text(item.first) })
             }
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (loading) Box(Modifier.fillMaxSize(), contentAlignment=Alignment.Center) { CircularProgressIndicator() }
-            else when(tab) {
+            else Crossfade(targetState=tab,animationSpec=tween(if(ValueAnimator.areAnimatorsEnabled())180 else 0),label="main-pages") { page->pageStateHolder.SaveableStateProvider(page) { when(page) {
                 0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     item {
-                        TodayAssistantHeader(data,personalization.profile,activity,now.atZone(SCHOOL_ZONE),onOpenTasks={tab=1;planTasks=true},onOpenDate={activity.getSharedPreferences("schedule_view",Context.MODE_PRIVATE).edit().putBoolean("calendar",true).apply();calendarDate=it.toString();tab=1;planTasks=false})
+                        TodayAssistantHeader(data,personalization.profile,activity,now.atZone(SCHOOL_ZONE),onOpenTasks={navigate(1);planTasks=true},onOpenDate={activity.getSharedPreferences("schedule_view",Context.MODE_PRIVATE).edit().putBoolean("calendar",true).apply();calendarDate=it.toString();navigate(1);planTasks=false})
                     }
                     item { FocusQuickStartCard(data,::requestFocus){focusOpenState=true} }
-                    if (data.schedule == null && data.manualLessons.isEmpty()) item { EmptyCard("把课表带到桌面", "导入学校课表或添加一项单次课程后，就能在这里查看安排。", "导入课表") { tab=3 } }
+                    item { GapRadarCard(data,now.atZone(SCHOOL_ZONE),onOpenTasks={navigate(1);planTasks=true},onAddTask={newTask(date=today)},onContinue={focusOpenState=true},onStart={task,minutes->vm.startFocus(task.title,FocusMode.COUNTDOWN,minutes,data.focusSettings.ambientSound,data.focusSettings.ambientVolume,task.courseRuleId,task.taskId,task.key){focusOpenState=true}}) }
+                    if (data.schedule == null && data.manualLessons.isEmpty()) item { EmptyCard("把课表带到桌面", "导入学校课表或添加一项课程后，就能在这里查看安排。", "导入课表") { navigate(3) } }
                     else {
                         val next = active.firstOrNull { it.endInstant > now }
                         item {
@@ -152,7 +177,7 @@ class MainActivity : ComponentActivity() {
                                         if (next.date != today) Text("${next.date} · ${dayName(next.date.dayOfWeek.value)}")
                                         Text(next.title, fontSize=22.sp, fontWeight=FontWeight.Bold)
                                         Text(next.locationText)
-                                        TextButton(onClick={ selected=next }) { Text("查看课程") }
+                                        TextButton(onClick={ openLesson(next) }) { Text("查看课程") }
                                     }
                                 }
                             }
@@ -170,11 +195,11 @@ class MainActivity : ComponentActivity() {
                         SegmentedButton(planTasks,{planTasks=true},shape=SegmentedButtonDefaults.itemShape(1,2)){Text("待办")}
                     }
                     Box(Modifier.weight(1f)) {
-                        if(!planTasks) ScheduleHub(data,lessons,conflicts,today,LocalDate.parse(calendarDate),::openLesson,::openTask,{item,complete->vm.completeTaskOccurrence(item,complete)},::toggleTaskSubtask,onAddLesson={date->manualDate=date;editingManual=null;manualDialog=true},onAddTask={date->newTask(date=date)})
+                        if(!planTasks) ScheduleHub(data,lessons,conflicts,today,LocalDate.parse(calendarDate),::openLesson,::openTask,{item,complete->vm.completeTaskOccurrence(item,complete)},::toggleTaskSubtask,onAddLesson={date->manualDate=date;editingManual=null;editingManualOccurrence=null;manualPrefill=null;manualDialog=true},onAddTask={date->newTask(date=date)})
                         else StudyTaskScreen(data,now.atZone(SCHOOL_ZONE),onAdd={newTask(date=today)},onEdit=::openTask,onToggle={task,complete->vm.completeTaskOccurrence(task,complete)},onToggleSubtask=::toggleTaskSubtask,onClearCompleted={clearCompletedConfirm=true})
                     }
                 }
-                2 -> MyHub(activity,data,personalization.profile,onReview={tab=5},onAchievements={tab=6},onSettings={tab=3},onProfile={tab=4},onMessage={vm.message.value=it})
+                2 -> MyHub(activity,data,personalization.profile,onReview={navigate(5)},onAchievements={navigate(6)},onSettings={navigate(3)},onProfile={navigate(4)},onMessage={vm.message.value=it})
                 3 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     item { Text("导入与设置", style=MaterialTheme.typography.headlineLarge, fontWeight=FontWeight.Bold) }
                     item { Text("学校课表", style=MaterialTheme.typography.titleLarge); Text(data.schedule?.term ?: "尚未导入课表") }
@@ -191,7 +216,7 @@ class MainActivity : ComponentActivity() {
                     }
                     item {
                         FilledTonalButton(onClick={activity.startActivity(Intent(activity,DiyActivity::class.java))},modifier=Modifier.fillMaxWidth()) { Text("桌面 DIY · 换上自己的照片") }
-                        Text("照片卡 / 毛玻璃 / 课程便签 · 两个组件分别定制",style=MaterialTheme.typography.bodySmall)
+                        Text("照片卡 / 毛玻璃 / 课程便签 · 三个组件分别定制",style=MaterialTheme.typography.bodySmall)
                     }
                     item { HorizontalDivider(); Text("桌面组件", style=MaterialTheme.typography.titleLarge, modifier=Modifier.padding(top=16.dp)) }
                     item {
@@ -219,9 +244,9 @@ class MainActivity : ComponentActivity() {
                     item { Text("临时调课与隐私",fontWeight=FontWeight.Bold); Text("点击课程可修改或删除当天安排，也可以在课表页添加单次课程。节假日不自动停课。课程、待办与图片仅存本机。网页登录由学校处理，应用不读取账号、密码和验证码。",style=MaterialTheme.typography.bodySmall); Text("xiaoyle 制作 · 非学校官方应用 · "+appVersionName(activity),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=12.dp)) }
                 }
                 4 -> ProfileScreen(activity,data,personalization,personalizationVm,vm::saveLearningGoal)
-                5 -> FocusReviewScreen(data,onBack={tab=2},onGoal=vm::saveFocusGoal,onDelete=vm::deleteFocusSession)
-                6 -> AchievementGallery(data,onBack={tab=2},onSave={vm.saveCustomAchievement(it)},onDelete={def,progress,featured->vm.deleteAchievement(def.id){scope.launch{if(snackbar.showSnackbar("已删除自定义成就","撤销")==SnackbarResult.ActionPerformed)vm.restoreAchievement(def,progress,featured)}}},onManual=vm::manualUnlockAchievement,onReset=vm::resetAchievement,onFeature={id->vm.featureAchievement(id,id !in data.featuredAchievementIds)},onMoveFeatured=vm::moveFeaturedAchievement)
-            }
+                5 -> FocusReviewScreen(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onGoal=vm::saveFocusGoal,onDelete=vm::deleteFocusSession)
+                6 -> AchievementGallery(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onSave={vm.saveCustomAchievement(it)},onDelete={def,progress,featured->vm.deleteAchievement(def.id){scope.launch{if(snackbar.showSnackbar("已删除自定义成就","撤销")==SnackbarResult.ActionPerformed)vm.restoreAchievement(def,progress,featured)}}},onManual=vm::manualUnlockAchievement,onReset=vm::resetAchievement,onFeature={id->vm.featureAchievement(id,id !in data.featuredAchievementIds)},onMoveFeatured=vm::moveFeaturedAchievement)
+            } } }
         }
     }
     preview?.let { result ->
@@ -251,9 +276,21 @@ class MainActivity : ComponentActivity() {
     selected?.let { lesson -> LessonDialog(lesson,busy,onDismiss={if(!busy)selected=null},onSave={edit,color->vm.editWithColor(edit,color){selected=null}},onAddTask={selected=null;newTask(lesson.ruleId,lesson.title)},onDelete={
         vm.cancel(lesson) {selected=null;scope.launch {if(snackbar.showSnackbar("已删除 ${lesson.date} 的课程","撤销")==SnackbarResult.ActionPerformed) vm.restore(lesson)}}
     },onStartFocus={selected=null;requestFocus(lesson.title,lesson.ruleId)},onRestore={vm.restore(lesson){selected=null}}) }
-    if(manualDialog) ManualLessonDialog(editingManual,manualDate,data.schedule?.periods.orEmpty(),lessons,onDismiss={if(!busy)manualDialog=false},onSave={lesson->vm.saveManual(lesson){manualDialog=false;editingManual=null}},onDelete={lesson->
-        vm.deleteManual(lesson) {manualDialog=false;editingManual=null;scope.launch {if(snackbar.showSnackbar("已删除自建课程","撤销")==SnackbarResult.ActionPerformed) vm.saveManual(lesson)}}
-    })
+    if(manualDialog) {
+        val suggestedRepeatCount=data.schedule?.let {schedule->
+            val last=LocalDate.parse(schedule.firstMonday).plusWeeks((schedule.lastWeek-1).coerceAtLeast(0).toLong()).plusDays(6)
+            ((java.time.temporal.ChronoUnit.DAYS.between(manualDate,last).coerceAtLeast(0)/7)+1).toInt().coerceIn(2,30)
+        }?:16
+        val templates=data.manualLessons.asReversed().distinctBy{"${it.title}|${it.start}|${it.end}|${it.teacher}|${it.location}"}.take(5)
+        ManualLessonDialog(
+            initial=editingManual,occurrence=editingManualOccurrence,prefill=manualPrefill,defaultDate=manualDate,
+            periods=data.schedule?.periods.orEmpty(),existing=lessons,templates=templates,suggestedRepeatCount=suggestedRepeatCount,
+            onDismiss={if(!busy){manualDialog=false;editingManual=null;editingManualOccurrence=null;manualPrefill=null}},
+            onSave={lesson,changeScope,index->vm.saveManualChange(editingManual,lesson,changeScope,index){manualDialog=false;editingManual=null;editingManualOccurrence=null;manualPrefill=null}},
+            onDelete={lesson,changeScope,index->vm.deleteManualChange(lesson,changeScope,index){manualDialog=false;editingManual=null;editingManualOccurrence=null;manualPrefill=null;scope.launch {if(snackbar.showSnackbar("已删除课程安排","撤销")==SnackbarResult.ActionPerformed) vm.saveManual(lesson)}}},
+            onCopy={copy->editingManual=null;editingManualOccurrence=null;manualPrefill=copy;manualDate=LocalDate.parse(copy.date)}
+        )
+    }
     if(taskDialog) taskDraft?.let { task->
         StudyTaskDialog(
             task=task,occurrence=taskOccurrence,existing=taskExisting,data=data,busy=busy,
@@ -262,7 +299,7 @@ class MainActivity : ComponentActivity() {
             onDelete={entire->val item=taskOccurrence;if(item==null)vm.deleteStudyTask(task){taskDialog=false;taskDraft=null}else vm.deleteTaskOccurrence(item,entire){taskDialog=false;taskDraft=null;taskOccurrence=null;scope.launch{if(snackbar.showSnackbar(if(entire)"已删除任务系列" else "已删除本次任务","撤销")==SnackbarResult.ActionPerformed)vm.saveStudyTask(task)}}},
             onDuplicate={
                 val item=taskOccurrence
-                taskDraft=task.copy(id=java.util.UUID.randomUUID().toString(),title=item?.title?:task.title,type=item?.type?:task.type,courseRuleId=item?.courseRuleId?:task.courseRuleId,courseTitle=item?.courseTitle?:task.courseTitle,dueAt=item?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt,priority=item?.priority?:task.priority,note=item?.note?:task.note,subtasks=item?.subtasks?:task.subtasks,completedAt=null,remindBeforeMinutes=null,repeatRule=null,instanceStates=emptyList(),createdAt=Instant.now().toString())
+                taskDraft=task.copy(id=java.util.UUID.randomUUID().toString(),title=item?.title?:task.title,type=item?.type?:task.type,courseRuleId=item?.courseRuleId?:task.courseRuleId,courseTitle=item?.courseTitle?:task.courseTitle,dueAt=item?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt,priority=item?.priority?:task.priority,note=item?.note?:task.note,estimatedMinutes=item?.estimatedMinutes?:task.estimatedMinutes,subtasks=item?.subtasks?:task.subtasks,completedAt=null,remindBeforeMinutes=null,repeatRule=null,instanceStates=emptyList(),createdAt=Instant.now().toString())
                 taskOccurrence=null
                 taskExisting=false
             },
@@ -275,6 +312,19 @@ class MainActivity : ComponentActivity() {
         text={Text("未完成任务不会受到影响。")},
         confirmButton={Button(onClick={vm.clearCompletedTasks{clearCompletedConfirm=false}}){Text("清除")}},
         dismissButton={TextButton(onClick={clearCompletedConfirm=false}){Text("取消")}}
+    )
+    if(showWhatsNew) AlertDialog(
+        onDismissRequest={},
+        icon={Icon(Icons.Outlined.AutoAwesome,"新版速览")},
+        title={Text("0.10.0 新版速览")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("• 返回键会逐级返回，首页需连续按两次才退出")
+            Text("• 学习看板可显示多项待办，并拥有独立 DIY")
+            Text("• 启动芯核支持配色、透明度和光效调整")
+            Text("• 个人中心新增四组原创风格轮播")
+            Text("• 空档雷达会为今天的空闲时间推荐待办")
+        }},
+        confirmButton={Button(onClick={whatsNewPrefs.edit().putBoolean("shown_0_10",true).apply();showWhatsNew=false}){Text("开始使用")}}
     )
 }
 
@@ -306,7 +356,7 @@ private fun pinWidget(context:Context,receiver:Class<*>,vm:MainViewModel) {
             Text(lesson.title,style=MaterialTheme.typography.titleMedium)
             Text(lesson.locationText,style=MaterialTheme.typography.bodyMedium)
             if(conflict) Text("与其他课程时间冲突",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelMedium)
-            if(lesson.manual) Text("自建单次课程",style=MaterialTheme.typography.labelSmall)
+            if(lesson.manual) Text(if(lesson.manualRepeatCount>1)"自建课程 · 每周 · 第 ${(lesson.manualIndex?:0)+1}/${lesson.manualRepeatCount} 次" else "自建单次课程",style=MaterialTheme.typography.labelSmall)
             else if(lesson.modified) Text("已修改本次安排",style=MaterialTheme.typography.labelSmall)
         }
         }

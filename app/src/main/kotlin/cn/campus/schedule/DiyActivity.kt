@@ -55,12 +55,14 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
 @Composable private fun DiyEditor(activity: DiyActivity) {
     val scope=rememberCoroutineScope()
     val snack=remember { SnackbarHostState() }
-    // Two independent drafts; switching preview never throws away unsaved work.
-    var next by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(DiyStore.read(activity,true)) }
-    var today by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(DiyStore.read(activity,false)) }
+    // Three independent drafts; switching preview never throws away unsaved work.
+    var next by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(DiyStore.read(activity,"next")) }
+    var today by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(DiyStore.read(activity,"today")) }
+    var study by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(DiyStore.read(activity,"study")) }
     var baselineNext by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(next) }
     var baselineToday by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(today) }
-    var compact by rememberSaveable { mutableStateOf(true) }
+    var baselineStudy by rememberSaveable(stateSaver=styleSaver) { mutableStateOf(study) }
+    var target by rememberSaveable { mutableStateOf("next") }
     var large by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -69,21 +71,20 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
     var themeName by rememberSaveable { mutableStateOf("") }
     var themes by remember { mutableStateOf(DiyStore.themes(activity)) }
     var courses by remember { mutableStateOf<List<Occurrence>>(emptyList()) }
-    val style=if(compact) next else today
-    val dirty=next!=baselineNext || today!=baselineToday
-    fun change(value: DiyStyle) { if(compact) next=value.copy(enabled=true) else today=value.copy(enabled=true) }
+    val style=when(target){"today"->today;"study"->study;else->next}
+    val dirty=next!=baselineNext || today!=baselineToday || study!=baselineStudy
+    fun change(value: DiyStyle) { when(target){"today"->today=value.copy(enabled=true);"study"->study=value.copy(enabled=true);else->next=value.copy(enabled=true)} }
     fun leave() { if(!busy) { if(dirty) exit=true else activity.finish() } }
     BackHandler { leave() }
     LaunchedEffect(Unit) { courses=withContext(Dispatchers.IO) { ScheduleEngine.occurrences(activity.scheduleApp.store.read()) } }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri != null) {
-            val target=compact
+            val pickerTarget=target
             busy=true; error=null
             scope.launch {
                 try {
                     val name=withContext(Dispatchers.IO) { DiyStore.importImage(activity,uri) }
-                    if(target) next=next.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f)
-                    else today=today.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f)
+                    when(pickerTarget){"today"->today=today.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f);"study"->study=study.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f);else->next=next.copy(enabled=true,kind="photo",image=name,zoom=1f,x=.5f,y=.5f)}
                 } catch(e: Exception) { error=e.message ?: "图片读取失败，请重新选择" }
                 finally { busy=false }
             }
@@ -97,11 +98,11 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
                     busy=true; error=null
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { DiyStore.save(activity,true,next); DiyStore.save(activity,false,today) }
-                            baselineNext=next; baselineToday=today
+                            withContext(Dispatchers.IO) { DiyStore.save(activity,"next",next); DiyStore.save(activity,"today",today); DiyStore.save(activity,"study",study) }
+                            baselineNext=next; baselineToday=today; baselineStudy=study
                             try {
-                                withContext(Dispatchers.IO) { NextWidget().updateAllSafe(activity); TodayWidget().updateAllSafe(activity) }
-                                snack.showSnackbar("已保存到桌面；尚未添加组件时，请返回设置页添加")
+                                withContext(Dispatchers.IO) { NextWidget().updateAllSafe(activity); TodayWidget().updateAllSafe(activity); StudyWidget().updateAllSafe(activity) }
+                                snack.showSnackbar("${when(target){"next"->"下一节课";"today"->"今日课程";else->"学习看板"}}外观已保存")
                             } catch(_:Exception) { error="搭配已保存，桌面刷新失败，请点击组件上的刷新" }
                         } catch(e:Exception) { error=e.message ?: "保存失败，请重试" }
                         finally {busy=false}
@@ -114,12 +115,13 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
             if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             // The preview stays visible while controls below scroll.
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal=20.dp,vertical=8.dp)) {
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    FilterChip(compact,{if(!busy)compact=true},label={Text("下一节课")})
-                    FilterChip(!compact,{if(!busy)compact=false},label={Text("今日课程")})
-                    TextButton(onClick={large=!large}){Text(if(large) "缩小预览" else "放大预览")}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    FilterChip(target=="next",{if(!busy)target="next"},label={Text("下一节课")},modifier=Modifier.weight(1f))
+                    FilterChip(target=="today",{if(!busy)target="today"},label={Text("今日课程")},modifier=Modifier.weight(1f))
+                    FilterChip(target=="study",{if(!busy)target="study"},label={Text("学习看板")},modifier=Modifier.weight(1f))
                 }
-                DiyPreview(activity, style, compact, large, courses, onMove={dx,dy ->
+                TextButton(onClick={large=!large},modifier=Modifier.align(Alignment.End)){Text(if(large) "缩小预览" else "放大预览")}
+                DiyPreview(activity, style, target, large, courses, onMove={dx,dy ->
                     if(!busy && style.image.isNotEmpty()) change(style.copy(x=(style.x-dx).coerceIn(0f,1f),y=(style.y-dy).coerceIn(0f,1f)))
                 })
                 Text("布局预览 · 实际大小随桌面调整 · 图片可拖动定位",style=MaterialTheme.typography.labelSmall,modifier=Modifier.padding(top=4.dp))
@@ -134,7 +136,7 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
                 }
                 Text("内置电影感海报",style=MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    listOf("scene_statue" to "仰望","scene_sky" to "日月","scene_window" to "窗边").forEach { (key,label) ->
+                    listOf("scene_core" to "山海芯核","scene_orbit" to "星轨穹顶","scene_kapok" to "木棉矩阵").forEach { (key,label) ->
                         FilterChip(style.enabled && style.kind==key,{if(!busy)change(style.copy(kind=key,image=""))},label={Text(label)})
                     }
                 }
@@ -182,7 +184,7 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
                         },enabled=!busy){Text("删除")}
                     }
                 }
-                TextButton(onClick={if(compact)next=DiyStyle() else today=DiyStyle()},enabled=!busy){Text("当前组件恢复默认外观")}
+                TextButton(onClick={when(target){"today"->today=DiyStyle();"study"->study=DiyStyle();else->next=DiyStyle()}},enabled=!busy){Text("当前组件恢复默认外观")}
                 Text("xiaoyle 制作 · "+appVersionName(activity)+"\n相同类型的桌面组件共用一套搭配。内置场景在组件中使用静态海报，修改外观不会改变课表和提醒。",style=MaterialTheme.typography.bodySmall)
             }
         }
@@ -200,7 +202,7 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
     }
 }
 
-@Composable private fun DiyPreview(context:android.content.Context,style:DiyStyle,compact:Boolean,large:Boolean,courses:List<Occurrence>,onMove:(Float,Float)->Unit) {
+@Composable private fun DiyPreview(context:android.content.Context,style:DiyStyle,target:String,large:Boolean,courses:List<Occurrence>,onMove:(Float,Float)->Unit) {
     val move by rememberUpdatedState(onMove)
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var failed by remember { mutableStateOf(false) }
@@ -214,17 +216,22 @@ private val styleSaver = Saver<DiyStyle,String>(save={Json.encodeToString(it)},r
     val ink=if(style.enabled) Color(style.foreground) else MaterialTheme.colorScheme.onSurface
     val accent=if(style.enabled) Color(style.highlight) else MaterialTheme.colorScheme.primary
     val now=Instant.now(); val date=now.atZone(SCHOOL_ZONE).toLocalDate()
+    val compact=target=="next"
     val chosen=if(compact) courses.filter { it.endInstant>now }.take(1) else courses.filter {it.date==date}.take(if(large)2 else 1)
     Box(Modifier.fillMaxWidth().height(height.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface)
         .pointerInput(Unit) { detectDragGestures { change, amount -> change.consume();move(amount.x/size.width,amount.y/size.height) } }) {
         bitmap?.let { Image(it.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds) }
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                Text(style.heading(compact),color=accent,fontSize=14.sp,fontWeight=FontWeight.Bold,maxLines=1,modifier=Modifier.weight(1f),overflow=TextOverflow.Ellipsis)
+                Text(style.heading(target),color=accent,fontSize=14.sp,fontWeight=FontWeight.Bold,maxLines=1,modifier=Modifier.weight(1f),overflow=TextOverflow.Ellipsis)
                 Text("刷新",color=accent,fontSize=12.sp)
             }
             Column(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp)).then(if(style.enabled && style.kind=="notes") Modifier.background(Color(0xFFE6EEDC)) else Modifier).padding(vertical=4.dp,horizontal=if(style.kind=="notes" && style.enabled)6.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                if(chosen.isEmpty()) {
+                if(target=="study") {
+                    listOf("完成实验报告" to "今天 20:00","复习高等数学" to "明天 09:00", "准备课堂展示" to "周五").take(if(large)3 else 2).forEach{(title,due)->
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("✓",color=accent,fontWeight=FontWeight.Bold);Spacer(Modifier.width(6.dp));Column(Modifier.weight(1f)){Text(title,color=ink,fontWeight=FontWeight.Bold,fontSize=(13*style.fontScale).sp,maxLines=1);Text(due,color=accent,fontSize=(10*style.fontScale).sp,maxLines=1)}}
+                    }
+                } else if(chosen.isEmpty()) {
                     Text("08:00–09:40 · 效果示例",color=accent,fontSize=(14*style.fontScale).sp)
                     Text("课程名称",color=ink,fontWeight=FontWeight.Bold,fontSize=(18*style.fontScale).sp)
                     Text("上课教室",color=ink,fontSize=(12*style.fontScale).sp)

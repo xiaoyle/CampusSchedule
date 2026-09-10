@@ -4,13 +4,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +30,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import cn.campus.core.ScheduleEngine
 import java.time.*
 
@@ -34,11 +43,12 @@ import java.time.*
     var studentNumber by remember(profile.studentNumber) { mutableStateOf(profile.studentNumber) }
     var dorm by remember(profile.dorm) { mutableStateOf(profile.dorm) }
     var clearConfirm by remember { mutableStateOf(false) }
+    var launchPreview by remember { mutableStateOf(false) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { it?.let(vm::importAvatar) }
     val backgroundPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { it?.let(vm::importLaunchImage) }
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         item { Text("个人中心",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold); Text("把课表助手调成你的样子",color=MaterialTheme.colorScheme.primary) }
-        item { SeasonalBanner() }
+        item { ProfileBanner(state,vm) }
         item { LearningOverview(data,onGoal) }
         item {
             ElevatedCard(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp)) {
@@ -98,10 +108,20 @@ import java.time.*
                     Switch(state.launch.enabled,{vm.save(state.copy(launch=state.launch.copy(enabled=it)),"启动效果设置已保存")})
                 }
                 Text("启动场景",fontWeight=FontWeight.Medium)
-                listOf("statue" to "仰望天空","sky" to "日月悬空","window" to "窗边微风").forEach { (key,label) ->
-                    RadioChoice(state.launch.scene==key,label) { vm.save(state.copy(launch=state.launch.copy(scene=key))) }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    listOf(
+                        Triple("core","山海芯核",R.drawable.launch_mountain_sea_thumb),
+                        Triple("orbit","星轨穹顶",R.drawable.launch_orbital_dome_thumb),
+                        Triple("kapok","木棉矩阵",R.drawable.launch_kapok_matrix_thumb)
+                    ).forEach { (key,label,image) ->
+                        OutlinedCard(
+                            onClick={vm.save(state.copy(launch=state.launch.copy(scene=key)))},
+                            border=BorderStroke(if(normalizedLaunchScene(state.launch.scene)==key)2.dp else 1.dp,if(normalizedLaunchScene(state.launch.scene)==key)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                            modifier=Modifier.width(112.dp)
+                        ) {Column(horizontalAlignment=Alignment.CenterHorizontally){Image(painterResource(image),null,Modifier.fillMaxWidth().height(148.dp),contentScale=ContentScale.Crop);Text(label,Modifier.padding(8.dp),style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)}}
+                    }
                 }
-                RadioChoice(state.launch.scene=="custom","我的照片") { if(state.launch.image.isBlank()) backgroundPicker.launch("image/*") else vm.save(state.copy(launch=state.launch.copy(scene="custom"))) }
+                RadioChoice(normalizedLaunchScene(state.launch.scene)=="custom","我的照片") { if(state.launch.image.isBlank()) backgroundPicker.launch("image/*") else vm.save(state.copy(launch=state.launch.copy(scene="custom"))) }
                 OutlinedButton(onClick={backgroundPicker.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("选择自己的启动背景") }
                 if(state.launch.scene=="custom") {
                     Text("背景缩放 ${(state.launch.zoom*100).toInt()}%",style=MaterialTheme.typography.labelMedium)
@@ -117,12 +137,23 @@ import java.time.*
                 Slider(state.launch.shade,{vm.save(state.copy(launch=state.launch.copy(shade=it)))},valueRange=0f..0.7f)
                 Text("动态强度",style=MaterialTheme.typography.labelMedium)
                 Slider(state.launch.motion,{vm.save(state.copy(launch=state.launch.copy(motion=it)))},valueRange=0f..1f)
+                HorizontalDivider()
+                Text("未来芯核外观",fontWeight=FontWeight.Medium)
+                Text("选择预设，或输入自己的芯核与光环颜色。",style=MaterialTheme.typography.bodySmall)
+                LaunchCoreEditor(state,vm)
+                FilledTonalButton(onClick={launchPreview=true},modifier=Modifier.fillMaxWidth()){Text("预览启动效果")}
                 Text("桌面组件显示对应静态海报；普通组件受安卓系统限制，不能稳定播放视频或实况照片。",style=MaterialTheme.typography.bodySmall)
             }
         }
         item { Text("NetID、学号、宿舍、头像和背景仅存放在本机，不会写入网页登录、课表文件或排查信息。",style=MaterialTheme.typography.bodySmall); Text("xiaoyle 制作 · "+appVersionName(activity),style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.Bold) }
     }
     if(clearConfirm) AlertDialog(onDismissRequest={clearConfirm=false},title={Text("清除个人资料？")},text={Text("将删除昵称、问候语、NetID、学号、宿舍和头像，不影响课表、提醒与主题。")},confirmButton={Button(onClick={clearConfirm=false;vm.clearProfile()}){Text("清除")}},dismissButton={TextButton(onClick={clearConfirm=false}){Text("取消")}})
+    if(launchPreview) Dialog(onDismissRequest={launchPreview=false},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+        Box(Modifier.fillMaxSize()) {
+            ChargeGate(state){launchPreview=false}
+            FilledTonalButton(onClick={launchPreview=false},modifier=Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp)){Text("关闭预览")}
+        }
+    }
 }
 
 @Composable private fun LearningOverview(data:cn.campus.core.AppData,onGoal:(Int)->Unit) {
@@ -161,35 +192,56 @@ import java.time.*
 @Composable private fun ThemeChoice(key:String,label:String,state:Personalization,vm:PersonalizationViewModel) = RadioChoice(state.themeMode==key,label) {vm.save(state.copy(themeMode=key),"配色已切换")}
 @Composable private fun RadioChoice(selected:Boolean,label:String,onClick:()->Unit) { Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) { RadioButton(selected,onClick); Text(label) } }
 
-@Composable private fun SeasonalBanner() {
+@Composable private fun ProfileBanner(state:Personalization,vm:PersonalizationViewModel) {
     val now=ZonedDateTime.now(cn.campus.core.SCHOOL_ZONE)
-    val month=now.monthValue
-    val (title,images)=when(month) {
-        1->"考试周" to listOf(R.drawable.season_exam_1,R.drawable.season_exam_2,R.drawable.season_exam_3)
-        in 2..4->"春季开学" to listOf(R.drawable.season_spring_1,R.drawable.season_spring_2,R.drawable.season_spring_3)
-        in 5..7->"毕业季" to listOf(R.drawable.season_graduation_1,R.drawable.season_graduation_2,R.drawable.season_graduation_3)
-        in 8..10->"秋季开学" to listOf(R.drawable.season_autumn_1,R.drawable.season_autumn_2,R.drawable.season_autumn_3)
-        else->"备考季" to listOf(R.drawable.season_prep_1,R.drawable.season_prep_2,R.drawable.season_prep_3)
+    var menu by remember {mutableStateOf(false)}
+    val styles=linkedMapOf(
+        "anime" to ("动漫二次元" to listOf(R.drawable.banner_anime_1,R.drawable.banner_anime_2,R.drawable.banner_anime_3)),
+        "apocalypse" to ("末世绝境" to listOf(R.drawable.banner_apocalypse_1,R.drawable.banner_apocalypse_2,R.drawable.banner_apocalypse_3)),
+        "cyber" to ("科技赛博朋克" to listOf(R.drawable.banner_cyber_1,R.drawable.banner_cyber_2,R.drawable.banner_cyber_3)),
+        "warm" to ("温馨风景" to listOf(R.drawable.banner_warm_1,R.drawable.banner_warm_2,R.drawable.banner_warm_3))
+    )
+    val selected=state.profileBannerStyle.takeIf{it in styles}?:"warm"
+    Crossfade(targetState=selected,animationSpec=tween(180),label="profile-banner") { styleKey->
+        val (label,images)=styles.getValue(styleKey)
+        val pagerState=rememberPagerState(initialPage=(now.dayOfYear-1)%3,pageCount={3})
+        Box(Modifier.fillMaxWidth().height(204.dp).clip(RoundedCornerShape(26.dp)).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer,MaterialTheme.colorScheme.secondaryContainer)))) {
+            HorizontalPager(state=pagerState,modifier=Modifier.fillMaxSize()) { page->
+                Image(painterResource(images[page]),"$label，第${page+1}张背景",Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+            }
+            Surface(color=Color.Black.copy(alpha=.42f),shape=RoundedCornerShape(999.dp),modifier=Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                IconButton(onClick={menu=true},modifier=Modifier.size(48.dp).semantics{contentDescription="更换轮播图风格"}) {Icon(Icons.Outlined.Palette,null,tint=Color.White)}
+                DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                    styles.forEach{(key,pair)->DropdownMenuItem(text={Text(pair.first)},leadingIcon={if(key==selected)Text("✓",color=MaterialTheme.colorScheme.primary)},onClick={menu=false;vm.save(state.copy(profileBannerStyle=key),"轮播风格已切换")})}
+                }
+            }
+            Surface(color=Color.Black.copy(alpha=.34f),shape=RoundedCornerShape(999.dp),modifier=Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
+                Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                    images.indices.forEach { index->Box(Modifier.size(if(index==pagerState.currentPage)15.dp else 6.dp,6.dp).background(Color.White.copy(alpha=if(index==pagerState.currentPage)1f else .52f),RoundedCornerShape(999.dp)))}
+                }
+            }
+        }
     }
-    val quote=DailyQuotes.forDate(now.toLocalDate())
-    val pagerState=rememberPagerState(initialPage=(now.dayOfYear-1)%images.size,pageCount={images.size})
-    Box(Modifier.fillMaxWidth().height(204.dp).clip(RoundedCornerShape(26.dp))) {
-        HorizontalPager(state=pagerState,modifier=Modifier.fillMaxSize()) { page->
-            Box(Modifier.fillMaxSize().semantics { contentDescription=title+"，第"+(page+1)+"张校园照片。每日一句："+quote }) {
-                Image(painterResource(images[page]),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color.Black.copy(alpha=.16f),Color.Black.copy(alpha=.82f)))))
-                Column(Modifier.align(Alignment.BottomStart).padding(start=20.dp,end=20.dp,bottom=20.dp)) {
-                    Text(title,color=Color.White,style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Black)
-                    Text(quote,color=Color.White.copy(alpha=.94f),style=MaterialTheme.typography.bodyLarge,maxLines=1)
-                }
-            }
-        }
-        Surface(color=Color.Black.copy(alpha=.38f),shape=RoundedCornerShape(999.dp),modifier=Modifier.align(Alignment.TopEnd).padding(14.dp)) {
-            Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically) {
-                images.indices.forEach { index->
-                    Box(Modifier.size(if(index==pagerState.currentPage) 15.dp else 6.dp,6.dp).background(Color.White.copy(alpha=if(index==pagerState.currentPage) 1f else .52f),RoundedCornerShape(999.dp)))
-                }
-            }
-        }
+}
+
+private fun colorHex(value:Long)="#"+(value and 0xFFFFFF).toString(16).uppercase().padStart(6,'0')
+private fun parseColorHex(value:String):Long?=value.trim().takeIf{it.matches(Regex("#[0-9A-Fa-f]{6}"))}?.drop(1)?.toLongOrNull(16)?.or(0xFF000000)
+
+@Composable private fun LaunchCoreEditor(state:Personalization,vm:PersonalizationViewModel) {
+    var coreText by remember(state.launch.coreColor){mutableStateOf(colorHex(state.launch.coreColor))}
+    var glowText by remember(state.launch.glowColor){mutableStateOf(colorHex(state.launch.glowColor))}
+    var opacity by remember(state.launch.coreOpacity){mutableFloatStateOf(state.launch.coreOpacity)}
+    var intensity by remember(state.launch.glowIntensity){mutableFloatStateOf(state.launch.glowIntensity)}
+    val presets=listOf(
+        "山海薄荷" to (0xFF071A1B to 0xFF8FF4D0),"珠海晴蓝" to (0xFF06263B to 0xFF74D8FF),
+        "星轨银紫" to (0xFF171529 to 0xFFC9C4FF),"木棉暖金" to (0xFF35140D to 0xFFFFC46B),"霓虹玫红" to (0xFF2A0B29 to 0xFFFF69D7)
+    )
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)) {presets.forEach{(name,colors)->FilterChip(selected=state.launch.coreColor==colors.first&&state.launch.glowColor==colors.second,onClick={coreText=colorHex(colors.first);glowText=colorHex(colors.second);vm.save(state.copy(launch=state.launch.copy(coreColor=colors.first,glowColor=colors.second)),"芯核配色已切换")},label={Text(name)})}}
+        OutlinedTextField(coreText,{value->coreText=value.take(7);parseColorHex(coreText)?.let{vm.save(state.copy(launch=state.launch.copy(coreColor=it))) }},label={Text("芯核主色")},supportingText={if(parseColorHex(coreText)==null)Text("颜色格式不正确，请输入 #RRGGBB") else Text("例如 #071A1B")},isError=parseColorHex(coreText)==null,singleLine=true,modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(glowText,{value->glowText=value.take(7);parseColorHex(glowText)?.let{vm.save(state.copy(launch=state.launch.copy(glowColor=it))) }},label={Text("光环颜色")},supportingText={if(parseColorHex(glowText)==null)Text("颜色格式不正确，请输入 #RRGGBB") else Text("例如 #8FF4D0")},isError=parseColorHex(glowText)==null,singleLine=true,modifier=Modifier.fillMaxWidth())
+        Text("芯核透明度 ${(opacity*100).toInt()}%",style=MaterialTheme.typography.labelMedium);Slider(opacity,{opacity=it},onValueChangeFinished={vm.save(state.copy(launch=state.launch.copy(coreOpacity=opacity)),"芯核透明度已保存")},valueRange=.25f..1f)
+        Text("光效强度 ${(intensity*100).toInt()}%",style=MaterialTheme.typography.labelMedium);Slider(intensity,{intensity=it},onValueChangeFinished={vm.save(state.copy(launch=state.launch.copy(glowIntensity=intensity)),"光效强度已保存")},valueRange=0f..1.5f)
+        TextButton(onClick={val value=LaunchStyle(enabled=state.launch.enabled,scene=state.launch.scene,image=state.launch.image,zoom=state.launch.zoom,x=state.launch.x,y=state.launch.y,blur=state.launch.blur,shade=state.launch.shade,motion=state.launch.motion);coreText=colorHex(value.coreColor);glowText=colorHex(value.glowColor);opacity=value.coreOpacity;intensity=value.glowIntensity;vm.save(state.copy(launch=value),"芯核外观已恢复默认")}){Text("恢复芯核默认外观")}
     }
 }

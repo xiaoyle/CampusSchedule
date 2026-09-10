@@ -105,80 +105,77 @@ abstract class CourseWidget(private val compact: Boolean) : GlanceAppWidget() {
 }
 
 class StudyWidget : GlanceAppWidget() {
-    override val sizeMode=SizeMode.Responsive(setOf(androidx.compose.ui.unit.DpSize(220.dp,180.dp),androidx.compose.ui.unit.DpSize(250.dp,220.dp),androidx.compose.ui.unit.DpSize(300.dp,300.dp)))
+    override val sizeMode=SizeMode.Responsive(setOf(androidx.compose.ui.unit.DpSize(220.dp,180.dp),androidx.compose.ui.unit.DpSize(250.dp,240.dp),androidx.compose.ui.unit.DpSize(320.dp,340.dp)))
     override suspend fun provideGlance(context:Context,id:GlanceId) {
         val initial=context.scheduleApp.store.read()
         provideContent {
             val current by context.scheduleApp.store.data.collectAsState(initial=initial)
             val stamp=currentState<Preferences>()[refreshedAt]
             val personalization=remember(stamp){PersonalizationStore.read(context)}
+            val diy=remember(stamp){DiyStore.read(context,"study")}
             val palette=remember(stamp,personalization.themeMode){CampusPalettes.resolve(personalization.themeMode)}
-            val ink=ColorProvider(palette.lightInk,palette.darkInk)
-            val accent=ColorProvider(palette.primary,palette.darkPrimary)
-            val surface=ColorProvider(palette.lightBackground,palette.darkBackground)
+            val ink=if(diy.enabled)androidx.glance.unit.ColorProvider(Color(diy.foreground))else ColorProvider(palette.lightInk,palette.darkInk)
+            val accent=if(diy.enabled)androidx.glance.unit.ColorProvider(Color(diy.highlight))else ColorProvider(palette.primary,palette.darkPrimary)
+            val baseSurface=ColorProvider(palette.lightBackground,palette.darkBackground)
             val now=(stamp?.let{Instant.ofEpochMilli(it)}?:Instant.now()).atZone(SCHOOL_ZONE)
             val today=now.toLocalDate()
             val todayLessons=ScheduleEngine.occurrences(current).count{!it.cancelled&&it.date==today}
-            val taskItems=StudyTaskEngine.occurrences(current,today.minusDays(30),today.plusDays(60))
-            val pending=taskItems.filter{it.completedAt==null}
-            val nearest=pending.minWithOrNull(compareBy<TaskOccurrence>{it.dueAt?.toInstant()?:Instant.MAX}.thenByDescending{it.priority})
-            val weekStart=today.minusDays((today.dayOfWeek.value-1).toLong())
-            val weekEnd=weekStart.plusDays(6)
+            val taskItems=StudyTaskEngine.occurrences(current,today.minusDays(30),today.plusDays(90))
+            val pending=taskItems.filter{it.completedAt==null}.sortedWith(
+                compareBy<TaskOccurrence>{item->when{item.dueAt?.isBefore(now)==true->0;item.dueAt?.toLocalDate()==today->1;item.priority==StudyTaskPriority.URGENT->2;item.dueAt!=null->3;else->4}}
+                    .thenBy{it.dueAt?.toInstant()?:Instant.MAX}.thenByDescending{it.priority}
+            )
+            val weekStart=today.minusDays((today.dayOfWeek.value-1).toLong());val weekEnd=weekStart.plusDays(6)
             val completedThisWeek=taskItems.count{item->item.completedAt?.let{runCatching{Instant.parse(it).atZone(SCHOOL_ZONE).toLocalDate()}.getOrNull()}?.let{!it.isBefore(weekStart)&&!it.isAfter(weekEnd)}==true}
-            val todayTasks=taskItems.count{it.completedAt==null&&it.dueAt?.toLocalDate()==today}
-            val total=current.studyTasks.size
+            val todayTasks=pending.count{it.dueAt?.toLocalDate()==today}
             val activeFocus=current.activeFocus
             val todayFocusMinutes=current.focusSessions.filter{FocusEngine.valid(it)&&Instant.parse(it.endedAt).atZone(SCHOOL_ZONE).toLocalDate()==today}.sumOf{it.focusedSeconds}/60
-            val small=LocalSize.current.height<220.dp||LocalSize.current.width<240.dp
-            Column(GlanceModifier.fillMaxSize().background(surface).cornerRadius(20.dp).padding(if(small)8.dp else 14.dp)) {
+            val widgetSize=LocalSize.current
+            val maxItems=when{widgetSize.height<260.dp||widgetSize.width<280.dp->2;widgetSize.height<330.dp||widgetSize.width<340.dp->3;else->4}
+            val small=maxItems==2
+            val backdrop=remember(diy,widgetSize){if(diy.enabled)runCatching{DiyRenderer.render(context,diy,(widgetSize.width.value*1.5f).toInt(),(widgetSize.height.value*1.5f).toInt())}.getOrNull()else null}
+            val surface=if(backdrop!=null)GlanceModifier.background(ImageProvider(backdrop))else GlanceModifier.background(baseSurface)
+            Column(GlanceModifier.fillMaxSize().then(surface).cornerRadius(20.dp).padding(if(small)8.dp else 14.dp)) {
                 Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Text("学习看板",style=TextStyle(color=accent,fontSize=if(small)13.sp else 16.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.defaultWeight(),maxLines=1)
+                    Text(diy.heading("study"),style=TextStyle(color=accent,fontSize=if(small)13.sp else 16.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.defaultWeight(),maxLines=1)
                     Text("刷新",style=TextStyle(color=accent,fontSize=12.sp),modifier=GlanceModifier.padding(horizontal=8.dp).clickable(actionRunCallback<RefreshWidget>()))
                 }
-                Row(GlanceModifier.fillMaxWidth().padding(vertical=if(small)4.dp else 8.dp)) {
-                    Text("今日 "+todayLessons+" 节课",style=TextStyle(color=ink,fontSize=12.sp),modifier=GlanceModifier.defaultWeight(),maxLines=1)
-                    Text("今日任务 "+todayTasks,style=TextStyle(color=ink,fontSize=12.sp),maxLines=1)
+                Row(GlanceModifier.fillMaxWidth().padding(vertical=if(small)3.dp else 6.dp)) {
+                    Text("今日 $todayLessons 节课",style=TextStyle(color=ink,fontSize=11.sp),modifier=GlanceModifier.defaultWeight(),maxLines=1)
+                    Text("待办 ${pending.size} 项",style=TextStyle(color=ink,fontSize=11.sp),maxLines=1)
+                }
+                if(activeFocus!=null){
+                    val elapsed=FocusEngine.elapsedSeconds(activeFocus,now.toInstant(),android.os.SystemClock.elapsedRealtime());val remaining=activeFocus.plannedSeconds?.let{(it-elapsed).coerceAtLeast(0)}
+                    Row(GlanceModifier.fillMaxWidth().padding(vertical=2.dp).clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("openFocus",true)))){
+                        Text(if(activeFocus.status==FocusStatus.PAUSED)"专注暂停" else "专注中",style=TextStyle(color=accent,fontSize=11.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.padding(end=6.dp))
+                        Text(activeFocus.title+" · "+(remaining?.let{"剩余 ${it/60}分"}?:"${elapsed/60}分"),style=TextStyle(color=ink,fontSize=11.sp),maxLines=1)
+                    }
                 }
                 Column(GlanceModifier.fillMaxWidth().defaultWeight()) {
-                    if(activeFocus!=null) {
-                        val elapsed=FocusEngine.elapsedSeconds(activeFocus,now.toInstant(),android.os.SystemClock.elapsedRealtime())
-                        val remaining=activeFocus.plannedSeconds?.let{(it-elapsed).coerceAtLeast(0)}
-                        Text(if(activeFocus.status==FocusStatus.PAUSED)"专注已暂停" else if(activeFocus.mode==FocusMode.BREAK)"正在休息" else "正在专注",style=TextStyle(color=accent,fontSize=12.sp,fontWeight=FontWeight.Bold),maxLines=1)
-                        Text(activeFocus.title,style=TextStyle(color=ink,fontSize=if(small)16.sp else 20.sp,fontWeight=FontWeight.Bold),maxLines=2,modifier=GlanceModifier.padding(vertical=4.dp).clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("openFocus",true))))
-                        Text(remaining?.let{"剩余 ${it/60} 分钟"}?:"已专注 ${elapsed/60} 分钟",style=TextStyle(color=ink,fontSize=12.sp),maxLines=1)
-                    } else if(nearest==null) {
-                        Text(if(total==0)"还没有待办" else "任务都完成了",style=TextStyle(color=ink,fontSize=if(small)16.sp else 19.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.fillMaxSize().clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("taskId","new"))),maxLines=2)
-                    } else {
-                        val due=nearest.dueAt
-                        val dueText=when {
-                            due==null->"无截止日期"
-                            due.isBefore(now)->"已逾期"
-                            due.toLocalDate()==today->"今天 "+due.toLocalTime()
-                            nearest.type==StudyTaskType.EXAM->"考试还有 "+Duration.between(today.atStartOfDay(SCHOOL_ZONE),due.toLocalDate().atStartOfDay(SCHOOL_ZONE)).toDays()+" 天"
-                            else->due.monthValue.toString()+"月"+due.dayOfMonth+"日 "+due.toLocalTime()
-                        }
-                        Text(nearest.type.label()+" · "+dueText,style=TextStyle(color=accent,fontSize=12.sp,fontWeight=FontWeight.Bold),maxLines=1)
-                        Text(nearest.title,style=TextStyle(color=ink,fontSize=if(small)16.sp else 20.sp,fontWeight=FontWeight.Bold),maxLines=2,modifier=GlanceModifier.padding(vertical=4.dp).clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("taskId",nearest.taskId).putExtra("taskOccurrenceKey",nearest.key))))
-                        if(!small&&nearest.courseTitle.isNotBlank())Text(nearest.courseTitle,style=TextStyle(color=ink,fontSize=12.sp),maxLines=1)
-                        if(!small)Text("完成本次",style=TextStyle(color=accent,fontSize=12.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.padding(vertical=5.dp).clickable(actionRunCallback<CompleteWidgetTask>(actionParametersOf(widgetTaskId to nearest.taskId,widgetOccurrenceKey to nearest.key))))
-                    }
+                    if(pending.isEmpty())Text(if(current.studyTasks.isEmpty())"还没有待办，点击添加" else "任务都完成了",style=TextStyle(color=ink,fontSize=if(small)15.sp else 18.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.fillMaxSize().clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("taskId","new"))),maxLines=2)
+                    else pending.take(maxItems).forEach{task->StudyWidgetTask(task,now,context,ink,accent,diy.fontScale)}
                 }
-                Text("今日专注 ${todayFocusMinutes} 分 · 任务 $completedThisWeek/${current.learningGoal.weeklyTarget}",style=TextStyle(color=accent,fontSize=11.sp),maxLines=1)
+                if(diy.enabled&&diy.motto.isNotBlank()&&!small)Text(diy.motto,style=TextStyle(color=ink,fontSize=10.sp),maxLines=1)
+                Text("今日专注 ${todayFocusMinutes} 分 · 任务 $completedThisWeek/${current.learningGoal.weeklyTarget}",style=TextStyle(color=accent,fontSize=10.sp),maxLines=1)
                 Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Text("xiaoyle 制作",style=TextStyle(color=ink,fontSize=11.sp),modifier=GlanceModifier.defaultWeight(),maxLines=1)
-                    if(personalization.profile.showAvatarOnWidgets) {
-                        val avatar=remember(stamp,personalization.profile){AvatarRenderer.render(context,personalization.profile,72)}
-                        Image(ImageProvider(avatar),"个人头像",modifier=GlanceModifier.size(if(small)22.dp else 28.dp))
-                    }
+                    Text("xiaoyle 制作",style=TextStyle(color=ink,fontSize=10.sp),modifier=GlanceModifier.defaultWeight(),maxLines=1)
+                    if(personalization.profile.showAvatarOnWidgets){val avatar=remember(stamp,personalization.profile){AvatarRenderer.render(context,personalization.profile,72)};Image(ImageProvider(avatar),"个人头像",modifier=GlanceModifier.size(if(small)22.dp else 28.dp))}
                 }
             }
         }
     }
-    suspend fun updateAllSafe(context:Context) {
-        GlanceAppWidgetManager(context).getGlanceIds(javaClass).forEach { id->
-            updateAppWidgetState(context,id){it[refreshedAt]=System.currentTimeMillis()}
-            update(context,id)
+    suspend fun updateAllSafe(context:Context){GlanceAppWidgetManager(context).getGlanceIds(javaClass).forEach{id->updateAppWidgetState(context,id){it[refreshedAt]=System.currentTimeMillis()};update(context,id)}}
+}
+
+@Composable private fun StudyWidgetTask(task:TaskOccurrence,now:ZonedDateTime,context:Context,ink:androidx.glance.unit.ColorProvider,accent:androidx.glance.unit.ColorProvider,fontScale:Float){
+    val deadline=task.dueAt
+    val due=when{deadline==null->"无截止";deadline.isBefore(now)->"已逾期";deadline.toLocalDate()==now.toLocalDate()->"今天 ${deadline.toLocalTime().withSecond(0).withNano(0)}";else->"${deadline.monthValue}/${deadline.dayOfMonth} ${deadline.toLocalTime().withSecond(0).withNano(0)}"}
+    Row(GlanceModifier.fillMaxWidth().padding(vertical=3.dp),verticalAlignment=Alignment.CenterVertically){
+        Column(GlanceModifier.defaultWeight().clickable(actionStartActivity(Intent(context,MainActivity::class.java).putExtra("taskId",task.taskId).putExtra("taskOccurrenceKey",task.key)))){
+            Text(task.title,style=TextStyle(color=ink,fontSize=(12*fontScale).sp,fontWeight=FontWeight.Bold),maxLines=1)
+            Text(due,style=TextStyle(color=accent,fontSize=(9*fontScale).sp),maxLines=1)
         }
+        Text("完成",style=TextStyle(color=accent,fontSize=10.sp,fontWeight=FontWeight.Bold),modifier=GlanceModifier.padding(5.dp).clickable(actionRunCallback<CompleteWidgetTask>(actionParametersOf(widgetTaskId to task.taskId,widgetOccurrenceKey to task.key))))
     }
 }
 @Composable private fun WidgetLesson(lesson: Occurrence, active: Boolean, context: Context, compact: Boolean, diy: DiyStyle,defaultAccent:Color) {

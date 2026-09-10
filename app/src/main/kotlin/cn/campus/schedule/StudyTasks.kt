@@ -24,6 +24,7 @@ import java.time.*
 import java.time.format.DateTimeFormatter
 
 private val taskTimeFormat=DateTimeFormatter.ofPattern("MM月dd日 HH:mm")
+private val gapTimeFormat=DateTimeFormatter.ofPattern("HH:mm")
 
 fun StudyTaskType.label()=when(this){StudyTaskType.HOMEWORK->"作业";StudyTaskType.EXAM->"考试";StudyTaskType.REVIEW->"复习";StudyTaskType.OTHER->"其他"}
 fun StudyTaskPriority.label()=when(this){StudyTaskPriority.NORMAL->"普通";StudyTaskPriority.IMPORTANT->"重要";StudyTaskPriority.URGENT->"紧急"}
@@ -67,6 +68,27 @@ fun taskDueText(task:TaskOccurrence,now:ZonedDateTime):String {
 }
 
 @Composable private fun OverviewMetric(value:String,label:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Black,color=MaterialTheme.colorScheme.primary);Text(label,style=MaterialTheme.typography.labelMedium)}}
+
+@Composable fun GapRadarCard(data:AppData,now:ZonedDateTime,onOpenTasks:()->Unit,onAddTask:()->Unit,onContinue:()->Unit,onStart:(TaskOccurrence,Int)->Unit) {
+    val today=now.toLocalDate()
+    val lessons=remember(data,today){ScheduleEngine.occurrences(data).filter{!it.cancelled&&it.date==today}}
+    val tasks=remember(data,today){StudyTaskEngine.occurrences(data,today.minusDays(30),today.plusDays(60))}
+    val recommendation=remember(data,now.toLocalTime().hour,now.toLocalTime().minute){GapRadarEngine.recommend(now,lessons,tasks)}
+    val activeFocus=data.activeFocus
+    var confirm by remember{mutableStateOf(false)}
+    OutlinedCard(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp)) {
+        Column(Modifier.padding(17.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Outlined.Radar,"空档雷达",tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(8.dp));Text("空档雷达",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
+            when {
+                activeFocus!=null->{Text("已有专注正在进行",fontWeight=FontWeight.Bold);Text(activeFocus.title,style=MaterialTheme.typography.bodySmall);FilledTonalButton(onClick=onContinue,modifier=Modifier.fillMaxWidth()){Text("继续专注")}}
+                recommendation==null->{Text("今天的可用时间已结束",fontWeight=FontWeight.Bold);Text("明天再来看看新的学习空档。",style=MaterialTheme.typography.bodySmall)}
+                recommendation.task==null->{Text("${recommendation.gap.start.format(gapTimeFormat)}–${recommendation.gap.end.format(gapTimeFormat)} · 可用 ${recommendation.gap.minutes} 分钟",color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold);Text("暂时没有能放入这段空档的待办。",style=MaterialTheme.typography.bodySmall);Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick=onOpenTasks){Text("查看待办")};Button(onClick=onAddTask){Text("添加待办")}}}
+                else->{val task=requireNotNull(recommendation.task);Text("${recommendation.gap.start.format(gapTimeFormat)}–${recommendation.gap.end.format(gapTimeFormat)} · 可用 ${recommendation.gap.minutes} 分钟",color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold);Text(task.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("建议专注 ${recommendation.suggestedMinutes} 分钟 · ${taskDueText(task,now)}",style=MaterialTheme.typography.bodySmall);Button(onClick={confirm=true},modifier=Modifier.fillMaxWidth()){Text("用这段空档开始专注")}}
+            }
+        }
+    }
+    if(confirm&&recommendation?.task!=null){val item=requireNotNull(recommendation.task);AlertDialog(onDismissRequest={confirm=false},title={Text("开始空档专注？")},text={Text("${item.title}\n${recommendation.gap.start.format(gapTimeFormat)}–${recommendation.gap.end.format(gapTimeFormat)}，计划专注 ${recommendation.suggestedMinutes} 分钟。\n\n专注结束后再由你决定是否完成任务。")},confirmButton={Button(onClick={confirm=false;onStart(item,recommendation.suggestedMinutes)}){Text("开始专注")}},dismissButton={TextButton(onClick={confirm=false}){Text("暂不开始")}})}
+}
 
 @Composable fun StudyTaskScreen(data:AppData,now:ZonedDateTime,onAdd:()->Unit,onEdit:(TaskOccurrence)->Unit,onToggle:(TaskOccurrence,Boolean)->Unit,onToggleSubtask:(TaskOccurrence,String,Boolean)->Unit,onClearCompleted:()->Unit){
     var status by rememberSaveable{mutableStateOf("all")};var query by rememberSaveable{mutableStateOf("")};var typeFilter by rememberSaveable{mutableStateOf<StudyTaskType?>(null)};var priorityFilter by rememberSaveable{mutableStateOf<StudyTaskPriority?>(null)};var courseFilter by rememberSaveable{mutableStateOf<String?>(null)};var courseMenu by remember{mutableStateOf(false)};var filtersExpanded by rememberSaveable{mutableStateOf(false)};var completedExpanded by rememberSaveable{mutableStateOf(false)}

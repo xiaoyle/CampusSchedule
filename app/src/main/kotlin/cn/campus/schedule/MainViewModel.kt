@@ -82,10 +82,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.Main){onSuccess()}
         refreshAfterSave()
     }
+    fun saveManualChange(original:ManualLesson?,draft:ManualLesson,scope:ManualLessonEditScope,index:Int,onSuccess:()->Unit={})=task {
+        val changed=if(original==null)draft else ScheduleEngine.updateManualLesson(original,draft,scope,index)
+        ScheduleEngine.validateManualLesson(changed)
+        application.store.update{state->state.copy(manualLessons=state.manualLessons.filterNot{it.id==changed.id}+changed)}
+        message.value=when{original==null&&changed.repeatCount>1->"每周课程已添加，共 ${changed.repeatCount} 次";original==null->"单次课程已添加";scope==ManualLessonEditScope.INSTANCE->"本次课程已更新";scope==ManualLessonEditScope.FUTURE->"本次及以后已更新";else->"课程系列已更新"}
+        withContext(Dispatchers.Main){onSuccess()};refreshAfterSave()
+    }
     fun deleteManual(lesson: ManualLesson, onSuccess: () -> Unit = {}) = task {
         application.store.update {state->state.copy(manualLessons=state.manualLessons.filterNot{it.id==lesson.id})}
         withContext(Dispatchers.Main){onSuccess()}
         refreshAfterSave()
+    }
+    fun deleteManualChange(lesson:ManualLesson,scope:ManualLessonEditScope,index:Int,onSuccess:()->Unit={})=task {
+        val changed=ScheduleEngine.deleteManualLesson(lesson,scope,index)
+        application.store.update{state->state.copy(manualLessons=state.manualLessons.filterNot{it.id==lesson.id}+listOfNotNull(changed))}
+        message.value=when(scope){ManualLessonEditScope.INSTANCE->"已删除本次课程";ManualLessonEditScope.FUTURE->"已删除本次及以后课程";ManualLessonEditScope.SERIES->"已删除课程系列"}
+        withContext(Dispatchers.Main){onSuccess()};refreshAfterSave()
     }
     fun saveStudyTask(studyTask: StudyTask, onSuccess: () -> Unit = {}) = task {
         StudyTaskEngine.validate(studyTask)
@@ -112,7 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 override=TaskInstanceOverride(
                     studyTask.title,studyTask.type,studyTask.courseRuleId,studyTask.courseTitle,
                     studyTask.dueAt ?: error("本次任务需要截止时间"),studyTask.priority,studyTask.note,
-                    studyTask.remindBeforeMinutes,studyTask.subtasks
+                    studyTask.remindBeforeMinutes,studyTask.subtasks,studyTask.estimatedMinutes
                 )
             )
             current.copy(instanceStates=current.instanceStates.filterNot {it.occurrenceKey==occurrence.key}+state)

@@ -30,6 +30,7 @@ data class DiyStyle(
     val foreground: Long get() = if (kind == "notes") 0xFF24352E else 0xFFFFFFFF
     val highlight: Long get() = if (kind == "notes") 0xFF176B52 else accent
     fun heading(compact: Boolean) = title.ifBlank { if(compact) "下一节课" else "今日课程" }
+    fun heading(target:String)=title.ifBlank {when(target){"next"->"下一节课";"study"->"学习看板";else->"今日课程"}}
 }
 
 @Serializable data class SavedDiy(val name: String, val style: DiyStyle)
@@ -37,12 +38,15 @@ data class DiyStyle(
 object DiyStore {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private fun prefs(c: Context) = c.getSharedPreferences("widget_diy", Context.MODE_PRIVATE)
-    fun read(c: Context, compact: Boolean): DiyStyle = runCatching {
-        json.decodeFromString<DiyStyle>(prefs(c).getString(if(compact) "next" else "today", "{}")!!)
+    fun read(c: Context, target:String): DiyStyle = runCatching {
+        json.decodeFromString<DiyStyle>(prefs(c).getString(target, "{}")!!)
     }.getOrDefault(DiyStyle())
-    fun save(c: Context, compact: Boolean, style: DiyStyle) {
-        check(prefs(c).edit().putString(if(compact) "next" else "today", json.encodeToString(style)).commit()) { "保存失败，请重试" }
+    fun save(c: Context, target:String, style: DiyStyle) {
+        require(target in setOf("next","today","study")) {"未知组件类型"}
+        check(prefs(c).edit().putString(target, json.encodeToString(style)).commit()) { "保存失败，请重试" }
     }
+    fun read(c: Context, compact: Boolean): DiyStyle = read(c,if(compact)"next" else "today")
+    fun save(c: Context, compact: Boolean, style: DiyStyle)=save(c,if(compact)"next" else "today",style)
     fun themes(c: Context): List<SavedDiy> = runCatching {
         json.decodeFromString<List<SavedDiy>>(prefs(c).getString("themes", "[]")!!)
     }.getOrDefault(emptyList())
@@ -106,8 +110,13 @@ object DiyRenderer {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         canvas.drawColor(if(style.kind == "notes") 0xFFF5EEDC.toInt() else 0xFF153D3B.toInt())
         val builtIn=style.kind.startsWith("scene_")
-        if(builtIn) drawScene(canvas,paint,w,h,style.kind)
-        val source = if(builtIn)null else DiyStore.imageFile(c, style.image)?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
+        val builtInResource=when(style.kind){
+            "scene_sky","scene_orbit"->R.drawable.launch_orbital_dome
+            "scene_window","scene_kapok"->R.drawable.launch_kapok_matrix
+            "scene_statue","scene_core"->R.drawable.launch_mountain_sea
+            else->null
+        }
+        val source = builtInResource?.let{BitmapFactory.decodeResource(c.resources,it)} ?: if(builtIn)null else DiyStore.imageFile(c, style.image)?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
         if(source != null) {
             val scale = max(w.toFloat()/source.width, h.toFloat()/source.height) * style.zoom.coerceIn(1f, 3f)
             val sw=source.width * scale; val sh=source.height * scale

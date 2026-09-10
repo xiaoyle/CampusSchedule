@@ -33,20 +33,25 @@ import kotlin.math.max
 
 @Serializable data class LaunchStyle(
     val enabled: Boolean = true,
-    val scene: String = "statue",
+    val scene: String = "core",
     val image: String = "",
     val zoom: Float = 1f,
     val x: Float = .5f,
     val y: Float = .5f,
     val blur: Float = 0f,
     val shade: Float = .3f,
-    val motion: Float = .7f
+    val motion: Float = .7f,
+    val coreColor: Long = 0xFF071A1B,
+    val glowColor: Long = 0xFF8FF4D0,
+    val coreOpacity: Float = .78f,
+    val glowIntensity: Float = 1f
 )
 
 @Serializable data class Personalization(
     val profile: ProfileData = ProfileData(),
     val themeMode: String = "kangle",
-    val launch: LaunchStyle = LaunchStyle()
+    val launch: LaunchStyle = LaunchStyle(),
+    val profileBannerStyle: String = "warm"
 )
 
 object PersonalizationStore {

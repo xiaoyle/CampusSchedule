@@ -30,8 +30,24 @@ val dataJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val id: String, val date: String, val title: String,
     val start: String, val end: String,
     val teacher: String = "", val location: String = "",
-    val color: Long = 0xFF176B52
+    val color: Long = 0xFF176B52,
+    val repeatCount: Int = 1,
+    val revisions: List<ManualLessonRevision> = emptyList(),
+    val instanceEdits: List<ManualLessonInstanceEdit> = emptyList()
 )
+@Serializable data class ManualLessonRevision(
+    val effectiveIndex: Int, val date: String, val title: String,
+    val start: String, val end: String, val teacher: String = "",
+    val location: String = "", val color: Long = 0xFF176B52
+)
+@Serializable data class ManualLessonInstanceEdit(
+    val index: Int, val cancelled: Boolean = false,
+    val date: String? = null, val title: String? = null,
+    val start: String? = null, val end: String? = null,
+    val teacher: String? = null, val location: String? = null,
+    val color: Long? = null
+)
+enum class ManualLessonEditScope { INSTANCE, FUTURE, SERIES }
 @Serializable enum class StudyTaskType { HOMEWORK, EXAM, REVIEW, OTHER }
 @Serializable enum class StudyTaskPriority { NORMAL, IMPORTANT, URGENT }
 @Serializable enum class TaskRepeatKind { DAILY, WEEKLY, CUSTOM_WEEKDAYS }
@@ -50,7 +66,8 @@ val dataJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val priority: StudyTaskPriority,
     val note: String = "",
     val remindBeforeMinutes: Int? = null,
-    val subtasks: List<StudySubtask> = emptyList()
+    val subtasks: List<StudySubtask> = emptyList(),
+    val estimatedMinutes: Int? = null
 )
 @Serializable data class TaskInstanceState(
     val occurrenceKey: String,
@@ -73,7 +90,8 @@ val dataJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val createdAt: String = Instant.now().toString(),
     val subtasks: List<StudySubtask> = emptyList(),
     val repeatRule: TaskRepeatRule? = null,
-    val instanceStates: List<TaskInstanceState> = emptyList()
+    val instanceStates: List<TaskInstanceState> = emptyList(),
+    val estimatedMinutes: Int? = null
 )
 @Serializable data class LearningGoal(val weeklyTarget: Int = 5)
 @Serializable enum class FocusMode { COUNTDOWN, STOPWATCH, BREAK }
@@ -145,7 +163,8 @@ data class Occurrence(
     val key: String, val ruleId: String, val title: String, val originalDate: String,
     val date: LocalDate, val start: LocalTime, val end: LocalTime, val candidates: List<Candidate>,
     val modified: Boolean, val cancelled: Boolean = false,
-    val manual: Boolean = false, val color: Long? = null
+    val manual: Boolean = false, val color: Long? = null,
+    val manualIndex: Int? = null, val manualRepeatCount: Int = 1
 ) {
     val startInstant: Instant get() = date.atTime(start).atZone(SCHOOL_ZONE).toInstant()
     val endInstant: Instant get() = date.atTime(end).atZone(SCHOOL_ZONE).toInstant()
@@ -179,15 +198,24 @@ object ScheduleEngine {
                 )
             } } }
         }.orEmpty()
-        val manual = data.manualLessons.map { lesson ->
+        val manual = data.manualLessons.flatMap { lesson ->
             validateManualLesson(lesson)
-            Occurrence(
-                key="manual@${lesson.id}", ruleId=lesson.id, title=lesson.title,
-                originalDate=lesson.date, date=LocalDate.parse(lesson.date),
-                start=LocalTime.parse(lesson.start), end=LocalTime.parse(lesson.end),
-                candidates=listOf(Candidate(lesson.teacher, lesson.location)), modified=true,
-                manual=true, color=lesson.color
-            )
+            (0 until lesson.repeatCount).mapNotNull { index ->
+                val revision=lesson.revisions.filter{it.effectiveIndex<=index}.maxByOrNull{it.effectiveIndex}
+                val baseDate=revision?.let{LocalDate.parse(it.date).plusWeeks((index-it.effectiveIndex).toLong())}
+                    ?:LocalDate.parse(lesson.date).plusWeeks(index.toLong())
+                val edit=lesson.instanceEdits.lastOrNull{it.index==index}
+                if(edit?.cancelled==true&&!includeCancelled)null else Occurrence(
+                    key="manual@${lesson.id}@$index",ruleId=lesson.id,
+                    title=edit?.title?:revision?.title?:lesson.title,
+                    originalDate=baseDate.toString(),date=edit?.date?.let(LocalDate::parse)?:baseDate,
+                    start=LocalTime.parse(edit?.start?:revision?.start?:lesson.start),
+                    end=LocalTime.parse(edit?.end?:revision?.end?:lesson.end),
+                    candidates=listOf(Candidate(edit?.teacher?:revision?.teacher?:lesson.teacher,edit?.location?:revision?.location?:lesson.location)),
+                    modified=true,cancelled=edit?.cancelled?:false,manual=true,
+                    color=edit?.color?:revision?.color?:lesson.color,manualIndex=index,manualRepeatCount=lesson.repeatCount
+                )
+            }
         }
         return (imported + manual).sortedWith(compareBy({ it.date }, { it.start }, { it.title }))
     }
@@ -243,6 +271,54 @@ object ScheduleEngine {
         val start = LocalTime.parse(lesson.start)
         val end = LocalTime.parse(lesson.end)
         require(start < end) { "结束时间须晚于开始时间" }
+        require(lesson.repeatCount in 1..30) { "课程总次数须为1至30次" }
+        lesson.revisions.forEach { revision ->
+            require(revision.effectiveIndex in 0 until lesson.repeatCount) { "课程系列修改位置无效" }
+            LocalDate.parse(revision.date)
+            require(revision.title.trim().isNotEmpty()) { "请填写课程名称" }
+            require(LocalTime.parse(revision.start)<LocalTime.parse(revision.end)) { "结束时间须晚于开始时间" }
+        }
+        lesson.instanceEdits.forEach { edit ->
+            require(edit.index in 0 until lesson.repeatCount) { "单次课程修改位置无效" }
+            edit.date?.let(LocalDate::parse)
+            require((edit.start==null)==(edit.end==null)) { "请同时填写开始和结束时间" }
+            if(edit.start!=null)require(LocalTime.parse(edit.start)<LocalTime.parse(edit.end)) { "结束时间须晚于开始时间" }
+        }
+    }
+
+    fun updateManualLesson(original:ManualLesson?,draft:ManualLesson,scope:ManualLessonEditScope,index:Int=0):ManualLesson {
+        validateManualLesson(draft)
+        if(original==null)return draft.copy(revisions=emptyList(),instanceEdits=emptyList())
+        validateManualLesson(original)
+        require(index in 0 until original.repeatCount) { "课程次数无效" }
+        val updated=when(if(original.repeatCount==1)ManualLessonEditScope.SERIES else scope) {
+            ManualLessonEditScope.SERIES->draft.copy(
+                id=original.id,
+                revisions=emptyList(),
+                instanceEdits=emptyList()
+            )
+            ManualLessonEditScope.FUTURE->original.copy(
+                revisions=original.revisions.filter{it.effectiveIndex<index}+ManualLessonRevision(index,draft.date,draft.title,draft.start,draft.end,draft.teacher,draft.location,draft.color),
+                instanceEdits=original.instanceEdits.filter{it.index<index}
+            )
+            ManualLessonEditScope.INSTANCE->original.copy(
+                instanceEdits=original.instanceEdits.filterNot{it.index==index}+ManualLessonInstanceEdit(index,date=draft.date,title=draft.title,start=draft.start,end=draft.end,teacher=draft.teacher,location=draft.location,color=draft.color)
+            )
+        }
+        validateManualLesson(updated);return updated
+    }
+
+    fun deleteManualLesson(original:ManualLesson,scope:ManualLessonEditScope,index:Int=0):ManualLesson? {
+        validateManualLesson(original);require(index in 0 until original.repeatCount) { "课程次数无效" }
+        return when(if(original.repeatCount==1)ManualLessonEditScope.SERIES else scope) {
+            ManualLessonEditScope.SERIES->null
+            ManualLessonEditScope.FUTURE->if(index==0)null else original.copy(
+                repeatCount=index,revisions=original.revisions.filter{it.effectiveIndex<index},instanceEdits=original.instanceEdits.filter{it.index<index}
+            ).also(::validateManualLesson)
+            ManualLessonEditScope.INSTANCE->original.copy(
+                instanceEdits=original.instanceEdits.filterNot{it.index==index}+ManualLessonInstanceEdit(index,cancelled=true)
+            ).also(::validateManualLesson)
+        }
     }
 }
 data class TaskOccurrence(
@@ -260,8 +336,44 @@ data class TaskOccurrence(
     val subtasks: List<StudySubtask>,
     val completedSubtaskIds: Set<String>,
     val completedAt: String?,
-    val repeated: Boolean
+    val repeated: Boolean,
+    val estimatedMinutes: Int?
 )
+
+data class StudyGap(val start:ZonedDateTime,val end:ZonedDateTime) {
+    val minutes:Long get()=Duration.between(start,end).toMinutes().coerceAtLeast(0)
+}
+data class GapRecommendation(val gap:StudyGap,val task:TaskOccurrence?,val suggestedMinutes:Int)
+
+object GapRadarEngine {
+    fun recommend(now:ZonedDateTime,lessons:List<Occurrence>,tasks:List<TaskOccurrence>):GapRecommendation? {
+        val end=now.toLocalDate().atTime(23,0).atZone(SCHOOL_ZONE)
+        if(!now.isBefore(end))return null
+        val occupied=lessons.filter{!it.cancelled&&it.date==now.toLocalDate()}
+            .map{it.date.atTime(it.start).atZone(SCHOOL_ZONE).minusMinutes(10) to it.date.atTime(it.end).atZone(SCHOOL_ZONE).plusMinutes(10)}
+            .sortedBy{it.first}
+        val gaps=mutableListOf<StudyGap>();var cursor=now
+        occupied.forEach{(start,finish)->
+            if(finish<=cursor)return@forEach
+            val clipped=start.coerceAtMost(end)
+            if(cursor<clipped&&Duration.between(cursor,clipped).toMinutes()>=10)gaps+=StudyGap(cursor,clipped)
+            if(finish>cursor)cursor=finish
+        }
+        if(cursor<end&&Duration.between(cursor,end).toMinutes()>=10)gaps+=StudyGap(cursor,end)
+        val pending=tasks.filter{it.completedAt==null}.sortedWith(compareBy<TaskOccurrence>{taskRank(it,now)}.thenBy{it.dueAt?.toInstant()?:Instant.MAX}.thenBy{it.title})
+        return gaps.firstNotNullOfOrNull{gap->pending.firstOrNull{effectiveMinutes(it)<=gap.minutes}?.let{GapRecommendation(gap,it,effectiveMinutes(it))}}
+            ?:gaps.firstOrNull()?.let{GapRecommendation(it,null,0)}
+    }
+    fun effectiveMinutes(task:TaskOccurrence)=task.estimatedMinutes?:30
+    private fun taskRank(task:TaskOccurrence,now:ZonedDateTime)=when {
+        task.dueAt?.isBefore(now)==true->0
+        task.dueAt?.toLocalDate()==now.toLocalDate()->1
+        task.priority==StudyTaskPriority.URGENT->2
+        task.dueAt!=null->3
+        task.priority==StudyTaskPriority.IMPORTANT->4
+        else->5
+    }
+}
 
 object StudyTaskEngine {
     val reminderChoices = setOf(0, 10, 30, 60, 1440, 4320)
@@ -274,6 +386,7 @@ object StudyTaskEngine {
         val due = task.dueAt?.takeIf { it.isNotBlank() }?.let { LocalDateTime.parse(it) }
         require(task.remindBeforeMinutes == null || task.remindBeforeMinutes in reminderChoices) { "提醒时间无效" }
         require(task.remindBeforeMinutes == null || due != null) { "设置提醒前请填写截止时间" }
+        require(task.estimatedMinutes == null || task.estimatedMinutes in 10..180) { "预计用时须为10至180分钟" }
         task.completedAt?.let { Instant.parse(it) }
         Instant.parse(task.createdAt)
         require(task.subtasks.size <= 30) { "子任务不能超过30项" }
@@ -288,7 +401,7 @@ object StudyTaskEngine {
         task.instanceStates.forEach { state ->
             require(state.occurrenceKey.isNotBlank()) { "任务实例编号不能为空" }
             state.completedAt?.let { Instant.parse(it) }
-            state.override?.let { LocalDateTime.parse(it.dueAt) }
+            state.override?.let { LocalDateTime.parse(it.dueAt);require(it.estimatedMinutes==null||it.estimatedMinutes in 10..180){"预计用时须为10至180分钟"} }
         }
     }
 
@@ -401,7 +514,7 @@ object StudyTaskEngine {
             override?.subtasks ?: task.subtasks,
             state?.completedSubtaskIds.orEmpty().toSet(),
             state?.completedAt ?: if (!repeated) task.completedAt else null,
-            repeated
+            repeated, override?.estimatedMinutes ?: task.estimatedMinutes
         )
     }
 }

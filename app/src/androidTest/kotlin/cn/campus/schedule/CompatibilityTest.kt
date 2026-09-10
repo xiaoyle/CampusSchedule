@@ -36,7 +36,7 @@ class CompatibilityTest {
         val info=context.packageManager.getPackageInfo(context.packageName,PackageManager.GET_ACTIVITIES or PackageManager.GET_PERMISSIONS)
         assertTrue(info.activities.orEmpty().any {it.name.endsWith("SchoolBrowserActivity") && !it.exported})
         assertTrue(info.requestedPermissions.orEmpty().contains("android.permission.INTERNET"))
-        assertEquals("0.8.0",info.versionName)
+        assertEquals("0.10.0",info.versionName)
     }
     @Test fun diagnosticsAndSettingsFallback() {
         val health=ReminderHealth.read(context,-1,false)
@@ -63,8 +63,8 @@ class CompatibilityTest {
         compose.onNodeWithText("华为安卓").performClick()
         compose.onNodeWithText("当前指引：华为安卓 · 切换").assertExists()
         photo("guide-api${Build.VERSION.SDK_INT}.png")
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("xiaoyle 制作 · 非学校官方应用 · 0.8.0"))
-        compose.onNodeWithText("xiaoyle 制作 · 非学校官方应用 · 0.8.0").assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("xiaoyle 制作 · 非学校官方应用 · 0.9.0"))
+        compose.onNodeWithText("xiaoyle 制作 · 非学校官方应用 · 0.9.0").assertIsDisplayed()
     }
     @Test fun alarmAudioStartsAndStopsWithoutChangingSchedule() {
         Assume.assumeTrue(ReminderScheduler.notificationsAllowed(context))

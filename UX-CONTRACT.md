@@ -111,3 +111,17 @@ Web 的组件所有权：课程卡为 main.tsx 的 card；对话框为 Modal；�
 | Scrollbar | style.css 系统滚动条 | DESIGN.md | 页面、弹窗 | 320–1280 宽度 |
 | Toast | main.tsx message/notice | 本约定 | 页面、弹窗内 | 错误及保存反馈 |
 | CRUD | store.ts + 导入预览 | 本约定 | 确认替换 | 保存、重开、失败保留 |
+
+## 0.9.0 course-series contract
+
+- A recurring manual course expands lazily from its base, revisions, and per-instance edits; it is never stored as duplicated independent courses.
+- Instance keys stay `manual@seriesId@index` after title, date, time, or location changes. Task and focus links retain the series ID.
+- “Only this occurrence” writes one exception. “This and future” appends a revision at the selected index. “Entire series” rewrites the base and clears prior revisions and exceptions so the change applies to every occurrence.
+- Deleting future occurrences truncates the series. Deleting from index zero removes the series. Destructive actions retain the existing snackbar undo path.
+- Old manual-course JSON without repeat fields decodes as one occurrence. Old launch scene identifiers normalize to the new three scenes.
+
+
+
+## 0.10.0 交互约定
+
+系统返回优先关闭弹层和详情，再按访问顺序返回主栏目；首页第一次返回显示“再按一次退出”。输入错误保留原内容并说明修复方式。提交期间禁用重复点击；组件外观保存与刷新分别反馈。主页面使用 180ms 淡入，系统关闭动画时即时切换。新版速览每次安装数据仅显示一次。
