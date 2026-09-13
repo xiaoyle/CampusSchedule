@@ -23,7 +23,7 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 <p align="center">
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-176B52">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.1.20-6D5CE7">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.10.0-1976D2">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.11.0-1976D2">
   <img alt="Local first" src="https://img.shields.io/badge/data-local%20only-475569">
 </p>
 
@@ -47,6 +47,9 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 - 自建课程支持“仅这一次”或每周重复 2–30 次；可按“仅本次／本次及以后／整个系列”修改和删除，并逐周检查冲突。
 - 添加课程可复用最近 5 个自建课程模板；系列中的每一次都会同步到今日、日历、组件和课前提醒。
 - 新增课业待办，可关联课程并记录作业、考试、复习和其他任务；支持优先级、截止时间、单次提醒、完成、复制和撤销。
+- 待办提醒支持预设提前量或自行选择任意提醒日期与时间；设置页可立即测试或安排 1 分钟后的待办提醒，测试使用与真实待办相同的通知渠道。
+- “我的”中新增本地灵感笔记：可创建栏目、置顶笔记，并选择清爽、方格或暖纸风格及点缀色。
+- 底部操作提示改为随浅色、深色和校园主题变化的圆角悬浮卡片，错误与成功状态更容易区分。
 - 支持每日、每周和自选星期重复任务，每次完成状态互不影响；任务可拆成可排序的检查清单。
 - 课表页可切换周课表与学习月历，在同一天的时间轴中统一查看课程和截止任务。
 - 待办支持搜索及类型、优先级、课程筛选；日期和时间可直接使用系统选择器。
@@ -68,7 +71,7 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 
 ## 下载与使用
 
-前往仓库右侧 **Releases**，打开 `v0.10.0`，在 **Assets** 中下载 `CampusSchedule-0.10.0.apk`。GitHub 自动生成的 Source code 不是安装包。
+前往仓库右侧 **Releases**，打开 `v0.11.0`，在 **Assets** 中下载 `CampusSchedule-0.11.0.apk`。GitHub 自动生成的 Source code 不是安装包。
 
 1. 安装 APK。若旧版本签名一致，可直接覆盖更新。
 2. 在“导入与设置”中确认第一教学周周一，点击“从学校网页导入”，自行登录和二次验证。
@@ -136,7 +139,7 @@ APK 输出位置为 `app/build/outputs/apk/debug/app-debug.apk`。真实课表�
 
 ## 文档
 
-- [0.10.0 发布说明](docs/RELEASE-v0.10.0.md)
+- [0.11.0 发布说明](docs/RELEASE-v0.11.0.md)
 - [内置校园照片来源](docs/PHOTO-CREDITS.md)
 - [数据与隐私说明](docs/PRIVACY.md)
 - [项目架构](docs/ARCHITECTURE.md)

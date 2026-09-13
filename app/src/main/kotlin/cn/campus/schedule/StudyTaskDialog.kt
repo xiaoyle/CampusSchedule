@@ -19,12 +19,21 @@ import cn.campus.core.*
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.math.abs
 
 private val editorDateTimeFormat=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-private fun reminderLabel(minutes:Int?)=when(minutes){null->"不提醒";0->"截止时";10->"提前10分钟";30->"提前30分钟";60->"提前1小时";1440->"提前1天";4320->"提前3天";else->"不提醒"}
+private fun reminderLabel(minutes:Int?)=when {
+    minutes==null->"不提醒"
+    minutes==0->"截止时"
+    minutes<60->"提前${minutes}分钟"
+    minutes%1440==0->"提前${minutes/1440}天"
+    minutes%60==0->"提前${minutes/60}小时"
+    minutes<1440->"提前${minutes/60}小时${minutes%60}分钟"
+    else->"提前${minutes/1440}天${(minutes%1440)/60}小时"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun StudyTaskDialog(task:StudyTask,occurrence:TaskOccurrence?,existing:Boolean,data:AppData,busy:Boolean,onDismiss:()->Unit,onSave:(StudyTask,Boolean)->Unit,onDelete:(Boolean)->Unit,onDuplicate:()->Unit,onStartFocus:()->Unit){
@@ -36,7 +45,14 @@ private fun reminderLabel(minutes:Int?)=when(minutes){null->"不提醒";0->"截�
     var courseTitle by remember(task.id,shown?.key){mutableStateOf(shown?.courseTitle?:task.courseTitle)}
     var dueText by remember(task.id,shown?.key){mutableStateOf((shown?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt)?.let{runCatching{LocalDateTime.parse(it).format(editorDateTimeFormat)}.getOrDefault(it)}.orEmpty())}
     var note by remember(task.id,shown?.key){mutableStateOf(shown?.note?:task.note)}
-    var reminder by remember(task.id,shown?.key){mutableStateOf(shown?.remindBeforeMinutes?:task.remindBeforeMinutes)}
+    val originalReminder=shown?.remindBeforeMinutes?:task.remindBeforeMinutes
+    var reminder by remember(task.id,shown?.key){mutableStateOf(originalReminder)}
+    val initialDue=remember(task.id,shown?.key){runCatching{LocalDateTime.parse(shown?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt.orEmpty())}.getOrNull()}
+    val presetReminders=setOf<Int?>(null,0,10,30,60,1440,4320)
+    val originalCustomReminder=originalReminder !in presetReminders
+    val originalCustomReminderText=if(originalCustomReminder&&initialDue!=null&&originalReminder!=null)initialDue.minusMinutes(originalReminder.toLong()).format(editorDateTimeFormat) else ""
+    var customReminder by remember(task.id,shown?.key){mutableStateOf(originalCustomReminder)}
+    var customReminderText by remember(task.id,shown?.key){mutableStateOf(originalCustomReminderText)}
     var estimateText by remember(task.id,shown?.key){mutableStateOf((shown?.estimatedMinutes?:task.estimatedMinutes)?.toString().orEmpty())}
     var repeatKind by remember(task.id){mutableStateOf(task.repeatRule?.kind)}
     var weekdays by remember(task.id){mutableStateOf(task.repeatRule?.weekdays.orEmpty().toSet())}
@@ -49,8 +65,22 @@ private fun reminderLabel(minutes:Int?)=when(minutes){null->"不提醒";0->"截�
     var discardConfirm by remember(task.id,shown?.key){mutableStateOf(false)}
     val courseOptions=remember(data.schedule,data.manualLessons){(data.schedule?.rules.orEmpty().map{it.id to it.title}+data.manualLessons.map{it.id to it.title}).distinctBy{it.first}}
     val repeatedExisting=existing&&occurrence?.repeated==true
-    val dirty=title!=(shown?.title?:task.title)||type!=(shown?.type?:task.type)||priority!=(shown?.priority?:task.priority)||courseId!=(shown?.courseRuleId?:task.courseRuleId)||dueText!=((shown?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt)?.let{runCatching{LocalDateTime.parse(it).format(editorDateTimeFormat)}.getOrDefault(it)}.orEmpty())||note!=(shown?.note?:task.note)||estimateText!=(shown?.estimatedMinutes?:task.estimatedMinutes)?.toString().orEmpty()||subtasks.toList()!=(shown?.subtasks?:task.subtasks)
-    fun submit(){runCatching{val due=dueText.trim().takeIf{it.isNotEmpty()}?.let{LocalDateTime.parse(it,editorDateTimeFormat).toString()};val repeat=repeatKind?.let{TaskRepeatRule(it,if(it==TaskRepeatKind.CUSTOM_WEEKDAYS)weekdays.sorted()else emptyList(),endsOn.trim().takeIf{date->date.isNotEmpty()}?.let(LocalDate::parse)?.toString())};val estimate=estimateText.trim().takeIf{it.isNotEmpty()}?.toInt();val updated=task.copy(title=title.trim(),type=type,priority=priority,courseRuleId=courseId,courseTitle=courseTitle.trim(),dueAt=due,note=note.trim(),remindBeforeMinutes=if(due==null)null else reminder,subtasks=subtasks.mapIndexed{i,item->item.copy(order=i)},repeatRule=if(repeatedExisting&&!entireSeries)task.repeatRule else repeat,estimatedMinutes=estimate);StudyTaskEngine.validate(updated);discardConfirm=false;onSave(updated,entireSeries||!repeatedExisting)}.onFailure{error=it.message?:"请检查任务内容和截止时间"}}
+    val dirty=title!=(shown?.title?:task.title)||type!=(shown?.type?:task.type)||priority!=(shown?.priority?:task.priority)||courseId!=(shown?.courseRuleId?:task.courseRuleId)||dueText!=((shown?.dueAt?.toLocalDateTime()?.toString()?:task.dueAt)?.let{runCatching{LocalDateTime.parse(it).format(editorDateTimeFormat)}.getOrDefault(it)}.orEmpty())||note!=(shown?.note?:task.note)||estimateText!=(shown?.estimatedMinutes?:task.estimatedMinutes)?.toString().orEmpty()||subtasks.toList()!=(shown?.subtasks?:task.subtasks)||reminder!=originalReminder||customReminder!=originalCustomReminder||customReminderText!=originalCustomReminderText
+    fun submit(){runCatching{
+        val dueLocal=dueText.trim().takeIf{it.isNotEmpty()}?.let{LocalDateTime.parse(it,editorDateTimeFormat)}
+        val due=dueLocal?.toString()
+        require(dueLocal!=null||(!customReminder&&reminder==null)){"设置提醒前请填写截止时间"}
+        val finalReminder=when {
+            dueLocal==null->null
+            !customReminder->reminder
+            else->{
+                val chosen=LocalDateTime.parse(customReminderText.trim(),editorDateTimeFormat)
+                require(!chosen.isAfter(dueLocal)){"提醒时间不能晚于截止时间"}
+                Duration.between(chosen,dueLocal).toMinutes().also{require(it in 0L..StudyTaskEngine.MAX_REMINDER_MINUTES.toLong()){"提醒时间须在截止前一年以内"}}.toInt()
+            }
+        }
+        val repeat=repeatKind?.let{TaskRepeatRule(it,if(it==TaskRepeatKind.CUSTOM_WEEKDAYS)weekdays.sorted()else emptyList(),endsOn.trim().takeIf{date->date.isNotEmpty()}?.let(LocalDate::parse)?.toString())};val estimate=estimateText.trim().takeIf{it.isNotEmpty()}?.toInt();val updated=task.copy(title=title.trim(),type=type,priority=priority,courseRuleId=courseId,courseTitle=courseTitle.trim(),dueAt=due,note=note.trim(),remindBeforeMinutes=finalReminder,subtasks=subtasks.mapIndexed{i,item->item.copy(order=i)},repeatRule=if(repeatedExisting&&!entireSeries)task.repeatRule else repeat,estimatedMinutes=estimate);StudyTaskEngine.validate(updated);discardConfirm=false;onSave(updated,entireSeries||!repeatedExisting)
+    }.onFailure{error=it.message?:"请检查任务内容和截止时间"}}
     fun requestDismiss(){if(dirty)discardConfirm=true else onDismiss()}
     AlertDialog(onDismissRequest={requestDismiss()},title={Text(if(existing)"编辑待办" else "新增待办")},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
@@ -63,13 +93,14 @@ private fun reminderLabel(minutes:Int?)=when(minutes){null->"不提醒";0->"截�
             Text("预计用时",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)){listOf(15,25,30,45,60,90).forEach{minutes->FilterChip(selected=estimateText==minutes.toString(),onClick={estimateText=minutes.toString()},label={Text("${minutes}分")})}}
             OutlinedTextField(estimateText,{estimateText=it.filter(Char::isDigit).take(3)},label={Text("自定义预计分钟（可选）")},supportingText={Text("10–180分钟；留空时空档雷达按30分钟计算")},singleLine=true,modifier=Modifier.fillMaxWidth(),trailingIcon={if(estimateText.isNotBlank())IconButton(onClick={estimateText=""}){Icon(Icons.Outlined.Close,"清除预计用时")}})
-            ExposedDropdownMenuBox(expanded=reminderExpanded,onExpandedChange={reminderExpanded=it}){OutlinedTextField(value=reminderLabel(reminder),onValueChange={},readOnly=true,label={Text("提醒")},trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(reminderExpanded)},modifier=Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable));ExposedDropdownMenu(expanded=reminderExpanded,onDismissRequest={reminderExpanded=false}){listOf<Int?>(null,0,10,30,60,1440,4320).forEach{value->DropdownMenuItem(text={Text(reminderLabel(value))},onClick={reminder=value;reminderExpanded=false})}}}
+            ExposedDropdownMenuBox(expanded=reminderExpanded,onExpandedChange={reminderExpanded=it}){OutlinedTextField(value=if(customReminder)"自定义时间" else reminderLabel(reminder),onValueChange={},readOnly=true,label={Text("提醒")},trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(reminderExpanded)},modifier=Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable));ExposedDropdownMenu(expanded=reminderExpanded,onDismissRequest={reminderExpanded=false}){listOf<Int?>(null,0,10,30,60,1440,4320).forEach{value->DropdownMenuItem(text={Text(reminderLabel(value))},onClick={reminder=value;customReminder=false;reminderExpanded=false})};DropdownMenuItem(text={Text("自定义日期与时间")},onClick={customReminder=true;if(customReminderText.isBlank()){customReminderText=runCatching{LocalDateTime.parse(dueText,editorDateTimeFormat).minusMinutes(30).format(editorDateTimeFormat)}.getOrElse{LocalDateTime.now().plusMinutes(5).format(editorDateTimeFormat)}};reminderExpanded=false})}}
+            if(customReminder){DateTimePickerField("自定义提醒时间",customReminderText,{customReminderText=it},allowEmpty=false);Text("可精确到分钟；提醒时间须早于或等于截止时间。重复任务会对每次实例使用相同提前量。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             if(!repeatedExisting||entireSeries){Text("重复",style=MaterialTheme.typography.labelLarge);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){FilterChip(selected=repeatKind==null,onClick={repeatKind=null},label={Text("不重复")});FilterChip(selected=repeatKind==TaskRepeatKind.DAILY,onClick={repeatKind=TaskRepeatKind.DAILY},label={Text("每天")});FilterChip(selected=repeatKind==TaskRepeatKind.WEEKLY,onClick={repeatKind=TaskRepeatKind.WEEKLY},label={Text("每周")})};FilterChip(selected=repeatKind==TaskRepeatKind.CUSTOM_WEEKDAYS,onClick={repeatKind=TaskRepeatKind.CUSTOM_WEEKDAYS},label={Text("自选星期")});if(repeatKind==TaskRepeatKind.CUSTOM_WEEKDAYS){listOf((1..4).toList(),(5..7).toList()).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){row.forEach{day->FilterChip(selected=day in weekdays,onClick={weekdays=if(day in weekdays)weekdays-day else weekdays+day},label={Text(weekdayName(day).takeLast(1))})}}}};if(repeatKind!=null)DatePickerField("结束日期（可选）",endsOn,{endsOn=it},allowEmpty=true)}
             OutlinedTextField(note,{note=it.take(500)},label={Text("备注（可选）")},minLines=3,maxLines=6,modifier=Modifier.fillMaxWidth())
             Text("检查清单",style=MaterialTheme.typography.labelLarge)
             subtasks.forEachIndexed{index,item->var drag by remember(item.id){mutableFloatStateOf(0f)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){Icon(Icons.Outlined.DragHandle,"长按拖动排序",Modifier.padding(top=14.dp).pointerInput(item.id){detectDragGesturesAfterLongPress(onDragEnd={drag=0f},onDragCancel={drag=0f}){change,amount->change.consume();drag+=amount.y;if(abs(drag)>45f){val target=(index+if(drag>0)1 else -1).coerceIn(0,subtasks.lastIndex);if(target!=index){val moved=subtasks.removeAt(index);subtasks.add(target,moved)};drag=0f}}});OutlinedTextField(item.title,{value->subtasks[index]=item.copy(title=value.take(60))},singleLine=true,modifier=Modifier.weight(1f));IconButton(onClick={subtasks.remove(item)}){Icon(Icons.Outlined.Delete,"删除子任务")}}}
             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){OutlinedTextField(newSubtask,{newSubtask=it.take(60)},label={Text("添加子任务")},singleLine=true,modifier=Modifier.weight(1f));IconButton(onClick={if(newSubtask.isNotBlank()&&subtasks.size<30){subtasks+=StudySubtask(UUID.randomUUID().toString(),newSubtask.trim(),subtasks.size);newSubtask=""}}){Icon(Icons.Outlined.Add,"添加子任务")}}
-            Text("保存摘要 · ${dueText.ifBlank{"无截止时间"}} · ${estimateText.ifBlank{"30"}} 分钟 · ${reminderLabel(reminder)}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("保存摘要 · ${dueText.ifBlank{"无截止时间"}} · ${estimateText.ifBlank{"30"}} 分钟 · ${if(customReminder)customReminderText.ifBlank{"请选择提醒时间"} else reminderLabel(reminder)}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let{Text(it,color=MaterialTheme.colorScheme.error)}
             if(existing){FilledTonalButton(onClick=onStartFocus,enabled=!busy,modifier=Modifier.fillMaxWidth()){Icon(Icons.Outlined.Timer,null);Spacer(Modifier.width(8.dp));Text("开始专注")};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){TextButton(onClick=onDuplicate,enabled=!busy){Text("复制")};TextButton(onClick={if(repeatedExisting&&entireSeries)deleteSeriesConfirm=true else onDelete(entireSeries||!repeatedExisting)},enabled=!busy){Text(if(repeatedExisting&&!entireSeries)"删除本次" else if(repeatedExisting)"删除整个系列" else "删除",color=MaterialTheme.colorScheme.error)}}}
         }

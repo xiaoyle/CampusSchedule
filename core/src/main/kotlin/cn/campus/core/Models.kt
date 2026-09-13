@@ -94,6 +94,27 @@ enum class ManualLessonEditScope { INSTANCE, FUTURE, SERIES }
     val estimatedMinutes: Int? = null
 )
 @Serializable data class LearningGoal(val weeklyTarget: Int = 5)
+@Serializable enum class NotePaperStyle { CLEAN, GRID, WARM }
+@Serializable data class NoteCategory(
+    val id: String,
+    val title: String,
+    val color: Long = 0xFF176B52,
+    val order: Int = 0
+)
+@Serializable data class StudyNote(
+    val id: String,
+    val categoryId: String = "",
+    val title: String,
+    val content: String = "",
+    val pinned: Boolean = false,
+    val createdAt: String = Instant.now().toString(),
+    val updatedAt: String = Instant.now().toString()
+)
+@Serializable data class NoteStyle(
+    val paper: NotePaperStyle = NotePaperStyle.CLEAN,
+    val accent: Long = 0xFF176B52,
+    val compact: Boolean = false
+)
 @Serializable enum class FocusMode { COUNTDOWN, STOPWATCH, BREAK }
 @Serializable enum class FocusStatus { RUNNING, PAUSED, COMPLETED, STOPPED, INTERRUPTED }
 @Serializable enum class AmbientSound { NONE, RAIN, WAVES, LIBRARY }
@@ -155,7 +176,10 @@ enum class ManualLessonEditScope { INSTANCE, FUTURE, SERIES }
     val focusSettings:FocusSettings = FocusSettings(),
     val customAchievements:List<AchievementDefinition> = emptyList(),
     val achievementProgress:List<AchievementProgress> = emptyList(),
-    val featuredAchievementIds:List<String> = emptyList()
+    val featuredAchievementIds:List<String> = emptyList(),
+    val noteCategories:List<NoteCategory> = emptyList(),
+    val studyNotes:List<StudyNote> = emptyList(),
+    val noteStyle:NoteStyle = NoteStyle()
 )
 data class ImportResult(val schedule: Schedule, val warnings: List<String>)
 data class ImportDiff(val added: Int, val removed: Int, val changed: Int, val unmatched: List<LessonEdit>)
@@ -376,7 +400,7 @@ object GapRadarEngine {
 }
 
 object StudyTaskEngine {
-    val reminderChoices = setOf(0, 10, 30, 60, 1440, 4320)
+    const val MAX_REMINDER_MINUTES = 525_600
 
     fun validate(task: StudyTask) {
         require(task.id.isNotBlank()) { "任务编号不能为空" }
@@ -384,7 +408,7 @@ object StudyTaskEngine {
         require(task.title.length <= 60) { "任务标题不能超过60字" }
         require(task.note.length <= 500) { "任务备注不能超过500字" }
         val due = task.dueAt?.takeIf { it.isNotBlank() }?.let { LocalDateTime.parse(it) }
-        require(task.remindBeforeMinutes == null || task.remindBeforeMinutes in reminderChoices) { "提醒时间无效" }
+        require(task.remindBeforeMinutes == null || task.remindBeforeMinutes in 0..MAX_REMINDER_MINUTES) { "提醒时间须在截止前一年以内" }
         require(task.remindBeforeMinutes == null || due != null) { "设置提醒前请填写截止时间" }
         require(task.estimatedMinutes == null || task.estimatedMinutes in 10..180) { "预计用时须为10至180分钟" }
         task.completedAt?.let { Instant.parse(it) }
@@ -401,7 +425,11 @@ object StudyTaskEngine {
         task.instanceStates.forEach { state ->
             require(state.occurrenceKey.isNotBlank()) { "任务实例编号不能为空" }
             state.completedAt?.let { Instant.parse(it) }
-            state.override?.let { LocalDateTime.parse(it.dueAt);require(it.estimatedMinutes==null||it.estimatedMinutes in 10..180){"预计用时须为10至180分钟"} }
+            state.override?.let {
+                LocalDateTime.parse(it.dueAt)
+                require(it.remindBeforeMinutes==null||it.remindBeforeMinutes in 0..MAX_REMINDER_MINUTES){"提醒时间须在截止前一年以内"}
+                require(it.estimatedMinutes==null||it.estimatedMinutes in 10..180){"预计用时须为10至180分钟"}
+            }
         }
     }
 

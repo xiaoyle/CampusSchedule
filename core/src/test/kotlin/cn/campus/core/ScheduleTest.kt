@@ -134,7 +134,19 @@ class ScheduleTest {
         listOf(later,sooner,open).forEach(StudyTaskEngine::validate)
         assertEquals(listOf("soon","later","open"),StudyTaskEngine.sorted(listOf(open,later,sooner)).map {it.id})
         assertEquals(Instant.parse("2026-09-10T13:00:00Z"),StudyTaskEngine.reminderAt(later))
+        val custom=later.copy(remindBeforeMinutes=95)
+        StudyTaskEngine.validate(custom)
+        assertEquals(Instant.parse("2026-09-10T12:25:00Z"),StudyTaskEngine.reminderAt(custom))
+        assertFailsWith<IllegalArgumentException>{StudyTaskEngine.validate(later.copy(remindBeforeMinutes=StudyTaskEngine.MAX_REMINDER_MINUTES+1))}
         assertFailsWith<IllegalArgumentException> {StudyTaskEngine.validate(open.copy(remindBeforeMinutes=10))}
+    }
+
+    @Test fun oldStateDecodesWithEmptyNotes() {
+        val oldJson="""{"schedule":null,"edits":[],"studyTasks":[]}"""
+        val state=dataJson.decodeFromString<AppData>(oldJson)
+        assertTrue(state.noteCategories.isEmpty())
+        assertTrue(state.studyNotes.isEmpty())
+        assertEquals(NotePaperStyle.CLEAN,state.noteStyle.paper)
     }
 
     @Test fun removedCourseKeepsTaskAsUnlinkedSnapshot() {

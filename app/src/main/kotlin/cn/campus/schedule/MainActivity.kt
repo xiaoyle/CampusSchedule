@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
     var now by remember { mutableStateOf(Instant.now()) }
     var permissionTick by remember { mutableIntStateOf(0) }
     val whatsNewPrefs=remember{activity.getSharedPreferences("whats_new",Context.MODE_PRIVATE)}
-    var showWhatsNew by remember {mutableStateOf(!whatsNewPrefs.getBoolean("shown_0_10",false))}
+    var showWhatsNew by remember {mutableStateOf(!whatsNewPrefs.getBoolean("shown_0_11",false))}
     val snackbar = remember { SnackbarHostState() }
     val scope=rememberCoroutineScope()
     val pageStateHolder=rememberSaveableStateHolder()
@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
             else->{val moment=SystemClock.elapsedRealtime();if(moment-lastBackAt<=2000)activity.finish()else{lastBackAt=moment;scope.launch{snackbar.showSnackbar("再按一次退出")}}}
         }
     }
-    Scaffold(snackbarHost={ SnackbarHost(snackbar) }, bottomBar={
+    Scaffold(snackbarHost={ CampusSnackbarHost(snackbar) }, bottomBar={
         NavigationBar {
             listOf("今日" to Icons.Outlined.Today, "计划" to Icons.Outlined.CalendarMonth, "我的" to Icons.Outlined.Person).forEachIndexed { i, item ->
                 NavigationBarItem(selected=if(i==2)tab>=2 else tab==i, onClick={ navigate(i) }, icon={ Icon(item.second, contentDescription=null) }, label={ Text(item.first) })
@@ -199,7 +199,7 @@ class MainActivity : ComponentActivity() {
                         else StudyTaskScreen(data,now.atZone(SCHOOL_ZONE),onAdd={newTask(date=today)},onEdit=::openTask,onToggle={task,complete->vm.completeTaskOccurrence(task,complete)},onToggleSubtask=::toggleTaskSubtask,onClearCompleted={clearCompletedConfirm=true})
                     }
                 }
-                2 -> MyHub(activity,data,personalization.profile,onReview={navigate(5)},onAchievements={navigate(6)},onSettings={navigate(3)},onProfile={navigate(4)},onMessage={vm.message.value=it})
+                2 -> MyHub(activity,data,personalization.profile,onReview={navigate(5)},onAchievements={navigate(6)},onNotes={navigate(7)},onSettings={navigate(3)},onProfile={navigate(4)},onMessage={vm.message.value=it})
                 3 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     item { Text("导入与设置", style=MaterialTheme.typography.headlineLarge, fontWeight=FontWeight.Bold) }
                     item { Text("学校课表", style=MaterialTheme.typography.titleLarge); Text(data.schedule?.term ?: "尚未导入课表") }
@@ -246,6 +246,7 @@ class MainActivity : ComponentActivity() {
                 4 -> ProfileScreen(activity,data,personalization,personalizationVm,vm::saveLearningGoal)
                 5 -> FocusReviewScreen(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onGoal=vm::saveFocusGoal,onDelete=vm::deleteFocusSession)
                 6 -> AchievementGallery(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onSave={vm.saveCustomAchievement(it)},onDelete={def,progress,featured->vm.deleteAchievement(def.id){scope.launch{if(snackbar.showSnackbar("已删除自定义成就","撤销")==SnackbarResult.ActionPerformed)vm.restoreAchievement(def,progress,featured)}}},onManual=vm::manualUnlockAchievement,onReset=vm::resetAchievement,onFeature={id->vm.featureAchievement(id,id !in data.featuredAchievementIds)},onMoveFeatured=vm::moveFeaturedAchievement)
+                7 -> NotesHub(data,busy,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onSaveCategory=vm::saveNoteCategory,onDeleteCategory=vm::deleteNoteCategory,onSaveNote=vm::saveStudyNote,onDeleteNote=vm::deleteStudyNote,onSaveStyle=vm::saveNoteStyle)
             } } }
         }
     }
@@ -316,16 +317,37 @@ class MainActivity : ComponentActivity() {
     if(showWhatsNew) AlertDialog(
         onDismissRequest={},
         icon={Icon(Icons.Outlined.AutoAwesome,"新版速览")},
-        title={Text("0.10.0 新版速览")},
+        title={Text("0.11.0 新版速览")},
         text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-            Text("• 返回键会逐级返回，首页需连续按两次才退出")
-            Text("• 学习看板可显示多项待办，并拥有独立 DIY")
-            Text("• 启动芯核支持配色、透明度和光效调整")
-            Text("• 个人中心新增四组原创风格轮播")
-            Text("• 空档雷达会为今天的空闲时间推荐待办")
+            Text("• 待办可选择任意提醒日期与时间")
+            Text("• 提醒检查新增待办通知真机测试")
+            Text("• “我的”新增可分类、置顶的灵感笔记")
+            Text("• 提示信息改为随主题变化的轻量卡片")
         }},
-        confirmButton={Button(onClick={whatsNewPrefs.edit().putBoolean("shown_0_10",true).apply();showWhatsNew=false}){Text("开始使用")}}
+        confirmButton={Button(onClick={whatsNewPrefs.edit().putBoolean("shown_0_11",true).apply();showWhatsNew=false}){Text("开始使用")}}
     )
+}
+
+@Composable private fun CampusSnackbarHost(state:SnackbarHostState) {
+    SnackbarHost(hostState=state,modifier=Modifier.padding(horizontal=18.dp,vertical=8.dp)){data->
+        val isError=remember(data.visuals.message){data.visuals.message.contains(Regex("失败|无法|错误|不正确|请先|请检查"))}
+        Surface(
+            shape=RoundedCornerShape(18.dp),
+            color=if(isError)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor=MaterialTheme.colorScheme.onSurface,
+            tonalElevation=6.dp,
+            shadowElevation=8.dp,
+            border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(Modifier.padding(start=16.dp,end=10.dp,top=11.dp,bottom=11.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primaryContainer,modifier=Modifier.size(32.dp)) {
+                    Box(contentAlignment=Alignment.Center){Icon(if(isError)Icons.Outlined.ErrorOutline else Icons.Outlined.CheckCircle,null,tint=if(isError)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,modifier=Modifier.size(19.dp))}
+                }
+                Text(data.visuals.message,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f))
+                data.visuals.actionLabel?.let{label->TextButton(onClick={data.performAction()}){Text(label)}}
+            }
+        }
+    }
 }
 
 private fun countdownText(start:Instant,now:Instant):String {

@@ -92,3 +92,38 @@ object TestReminder {
         return ReminderScheduler.notify(context,ID,"锁屏提醒测试","1 分钟测试已触发。请核对是否收到通知、声音和锁屏显示；长期待机仍需实测。")
     }
 }
+
+/** One-shot verification for the separate study-task notification channel. */
+object TaskTestReminder {
+    const val ACTION = "cn.campus.schedule.TASK_TEST_REMIND"
+    const val ID = 9
+    private fun prefs(context: Context) = context.getSharedPreferences("task_test_reminder",0)
+    private fun boot(context: Context) = Settings.Global.getInt(context.contentResolver,Settings.Global.BOOT_COUNT,0)
+    private fun intent(context: Context, at: Long = 0) = PendingIntent.getBroadcast(context,81,
+        Intent(context,ReminderReceiver::class.java).setAction(ACTION).putExtra("at",at),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    @Synchronized fun pendingAt(context: Context): Long {
+        val p=prefs(context)
+        return if(p.getInt("boot",-1)==boot(context))p.getLong("at",0)else 0
+    }
+    @Synchronized fun schedule(context: Context): Long {
+        require(ReminderScheduler.taskNotificationsAllowed(context)){"请先开启应用通知和课业待办通知渠道"}
+        val at=System.currentTimeMillis()+60_000
+        val alarm=context.getSystemService(AlarmManager::class.java)
+        val pending=intent(context,at)
+        alarm.cancel(pending)
+        prefs(context).edit().remove("at").apply()
+        ReminderScheduler.scheduleAlarm(alarm,context,java.time.Instant.ofEpochMilli(at),pending)
+        prefs(context).edit().putLong("at",at).putInt("boot",boot(context)).apply()
+        return at
+    }
+    @Synchronized fun cancel(context: Context) {
+        context.getSystemService(AlarmManager::class.java).cancel(intent(context))
+        prefs(context).edit().remove("at").apply()
+        context.getSystemService(NotificationManager::class.java).cancel(ID)
+    }
+    @Synchronized fun receive(context: Context, expected: Long): Boolean {
+        if(expected<=0||pendingAt(context)!=expected)return false
+        prefs(context).edit().remove("at").apply()
+        return ReminderScheduler.notifyTaskTest(context)
+    }
+}

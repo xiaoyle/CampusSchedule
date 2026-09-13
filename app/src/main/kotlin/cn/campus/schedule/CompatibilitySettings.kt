@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter
     var testTick by remember { mutableIntStateOf(0) }
     val state=remember(tick,minutes,alarmEnabled,testTick,now) { ReminderHealth.read(context,minutes,alarmEnabled) }
     val pending=remember(tick,testTick,now) { TestReminder.pendingAt(context) }
+    val taskPending=remember(tick,testTick,now) { TaskTestReminder.pendingAt(context) }
     fun open(intent: Intent) = SettingsNavigator.open(context,intent,onMessage)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("提醒检查",style=MaterialTheme.typography.titleLarge)
@@ -45,6 +46,18 @@ import java.time.format.DateTimeFormatter
         Text("课业待办通知渠道",fontWeight=FontWeight.Bold)
         Text(if(ReminderScheduler.taskNotificationsAllowed(context))"已开启" else "需要设置，待办提醒可能无法显示")
         TextButton(onClick={open(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID,ReminderScheduler.TASK_CHANNEL))}) { Text("检查课业待办渠道") }
+        OutlinedButton(onClick={
+            onMessage(if(ReminderScheduler.notifyTaskTest(context))"待办测试通知已提交，请检查手机是否收到" else "请先开启应用通知和课业待办通知渠道")
+        },modifier=Modifier.fillMaxWidth()){Text("立即测试待办通知")}
+        OutlinedButton(onClick={
+            runCatching{TaskTestReminder.schedule(context)}.onSuccess{testTick++;onMessage("已安排1分钟后待办测试，请锁屏检查；未授权准时提醒时可能延迟")}
+                .onFailure{onMessage(it.message?:"待办测试安排失败，请检查系统设置")}
+        },modifier=Modifier.fillMaxWidth()){Text("1分钟后测试待办提醒")}
+        if(taskPending>0){
+            val label=Instant.ofEpochMilli(taskPending).atZone(SCHOOL_ZONE).format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+            Text("待办测试目标时间 $label（北京时间）。测试使用与真实待办相同的通知渠道和闹钟调度。",style=MaterialTheme.typography.bodySmall)
+            TextButton(onClick={TaskTestReminder.cancel(context);testTick++;onMessage("已取消待办测试")}){Text("取消待办测试")}
+        }
         Text("厂商自启动与后台活动：请手动检查。已授权不代表锁屏待机提醒一定准时。",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={
             onMessage(if(ReminderScheduler.notify(context,7,"课前提醒测试","测试通知已提交，请核对声音和锁屏显示。")) "测试通知已提交，请检查手机是否收到" else "请先开启应用通知和课前提醒通知渠道")

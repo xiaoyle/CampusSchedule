@@ -202,6 +202,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.Main) { onSuccess() }
         refreshAfterSave()
     }
+    fun saveNoteCategory(category:NoteCategory)=task {
+        require(category.title.trim().isNotEmpty()){ "请填写栏目名称" }
+        require(category.title.length<=20){ "栏目名称不能超过20字" }
+        application.store.update { state ->
+            state.copy(noteCategories=state.noteCategories.filterNot{it.id==category.id}+category.copy(title=category.title.trim()))
+        }
+        message.value="笔记栏目已保存"
+    }
+    fun deleteNoteCategory(category:NoteCategory)=task {
+        application.store.update { state -> state.copy(
+            noteCategories=state.noteCategories.filterNot{it.id==category.id},
+            studyNotes=state.studyNotes.map{if(it.categoryId==category.id)it.copy(categoryId="")else it}
+        ) }
+        message.value="栏目已删除，笔记已移到未分类"
+    }
+    fun saveStudyNote(note:StudyNote)=task {
+        require(note.title.trim().isNotEmpty()){ "请填写笔记标题" }
+        require(note.title.length<=80){ "笔记标题不能超过80字" }
+        require(note.content.length<=20_000){ "笔记正文不能超过20000字" }
+        application.store.update { state ->
+            val safeCategory=note.categoryId.takeIf{id->state.noteCategories.any{it.id==id}}.orEmpty()
+            state.copy(studyNotes=state.studyNotes.filterNot{it.id==note.id}+note.copy(categoryId=safeCategory,title=note.title.trim()))
+        }
+        message.value="笔记已保存"
+    }
+    fun deleteStudyNote(note:StudyNote)=task {
+        application.store.update { state -> state.copy(studyNotes=state.studyNotes.filterNot{it.id==note.id}) }
+        message.value="笔记已删除"
+    }
+    fun saveNoteStyle(style:NoteStyle)=task {
+        application.store.update { it.copy(noteStyle=style) }
+        message.value="笔记外观已更新"
+    }
     fun saveLearningGoal(target:Int)=task {
         require(target in 1..30)
         application.store.update {it.copy(learningGoal=LearningGoal(target))}

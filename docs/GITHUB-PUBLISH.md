@@ -10,6 +10,14 @@
 ./scripts/prepare-github.ps1
 ```
 
+脚本已经按 UTF-8 BOM 保存，并避免使用新版 .NET 独有的路径函数，可直接在 Windows PowerShell 5.1 中运行。如果系统限制脚本执行，可使用：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-github.ps1
+```
+
+若终端出现整行中文乱码并报告 `ParserError`，说明拿到的是修复前的脚本；请用当前仓库中的 `scripts/prepare-github.ps1` 覆盖后重试。
+
 脚本会在 `dist` 生成 `github-release-0.10.0-时间/`：
 
 - `repository/`：可以覆盖到 GitHub 仓库的公开源码。

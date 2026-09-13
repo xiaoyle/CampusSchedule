@@ -53,7 +53,7 @@ object ReminderScheduler {
         val taskItems=StudyTaskEngine.occurrences(data,now.atZone(SCHOOL_ZONE).toLocalDate().minusDays(30),now.atZone(SCHOOL_ZONE).toLocalDate().plusYears(2))
         val valid = items.filter { it.endInstant > now }.map { it.key.hashCode() }.toSet() +
             taskItems.filter { it.completedAt==null }.map { taskNotificationId(it.key) }
-        manager.activeNotifications.filter { it.id !in setOf(7,TestReminder.ID,AlarmPlaybackService.NOTIFICATION) && it.id !in valid }.forEach { manager.cancel(it.id) }
+        manager.activeNotifications.filter { it.id !in setOf(7,TestReminder.ID,TaskTestReminder.ID,AlarmPlaybackService.NOTIFICATION) && it.id !in valid }.forEach { manager.cancel(it.id) }
         if (data.reminderMinutes >= 0 && notificationsAllowed(context)) {
             val delivered = context.getSharedPreferences("alarms", 0).getStringSet("delivered", emptySet()).orEmpty()
             val upcoming = items.filter { it.key !in delivered && it.startInstant.minusSeconds(data.reminderMinutes * 60L) > now }
@@ -109,6 +109,15 @@ object ReminderScheduler {
             .setPriority(NotificationCompat.PRIORITY_HIGH).build()
         return try {NotificationManagerCompat.from(context).notify(id,notification);true}catch(_:SecurityException){false}
     }
+    fun notifyTaskTest(context:Context):Boolean {
+        if(!taskNotificationsAllowed(context))return false
+        val click=PendingIntent.getActivity(context,TaskTestReminder.ID,Intent(context,MainActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification=NotificationCompat.Builder(context,TASK_CHANNEL).setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("待办提醒测试").setContentText("测试已触发。实际待办会按你选择的日期与时间提醒。")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("测试已触发。请核对通知声音和锁屏显示；实际待办会按你选择的日期与时间提醒。"))
+            .setContentIntent(click).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        return try {NotificationManagerCompat.from(context).notify(TaskTestReminder.ID,notification);true}catch(_:SecurityException){false}
+    }
 }
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -133,6 +142,10 @@ class ReminderReceiver : BroadcastReceiver() {
                     context.scheduleApp.store.update{AchievementEngine.evaluate(it).first}
                     context.getSystemService(NotificationManager::class.java).cancel(ReminderScheduler.taskNotificationId(occurrenceKey))
                     ReminderScheduler.refresh(context)
+                    return@launch
+                }
+                if(intent.action==TaskTestReminder.ACTION) {
+                    TaskTestReminder.receive(context,intent.getLongExtra("at",0))
                     return@launch
                 }
                 if (intent.action == "REMIND") {
@@ -174,7 +187,7 @@ class RecoveryReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in setOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED,
                 Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED, AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED)) return
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) TestReminder.cancel(context)
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) { TestReminder.cancel(context); TaskTestReminder.cancel(context) }
         // Boot recovery must not depend on a deferred JobScheduler window.
         val pending = goAsync()
         context.scheduleApp.scope.launch {
