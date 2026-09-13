@@ -1,6 +1,9 @@
 # 中大课表助手
+华为鸿蒙系组件开发中 
+iphone用户尚无法正常使用
+其他安卓用户均可尝试，如有问题欢迎通过 github issues 留言
 
-## iPhone / 网页版（新增）
+# iPhone / 网页版 (仍然内测中，尚不可用)
 
 **[打开中大课表网页版](https://xiaoyle.github.io/CampusSchedule/)** · xiaoyle 制作
 
@@ -10,7 +13,7 @@ Safari 访问 → 添加到主屏幕 → 从图标打开 → 导入 Word / PDF �
 
 iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包含安卓后台闹铃或原生桌面组件。以下为安卓版本说明。
 
-
+# 安卓版说明
 <p align="center">
   <img src="docs/images/readme-hero.svg" alt="中大课表助手：今日课程、下一节课与桌面 DIY" width="900">
 </p>
@@ -136,6 +139,61 @@ APK 输出位置为 `app/build/outputs/apk/debug/app-debug.apk`。真实课表�
 - 原生 HarmonyOS 5 / 6 / NEXT 通过卓易通运行时，安卓组件通常不能显示在鸿蒙桌面；当前没有原生鸿蒙卡片版。
 - 普通 Android 桌面组件不支持稳定播放视频、GIF 或实况照片；内置场景在组件中显示静态海报，在启动页中显示轻量动态效果。
 - 0.10.0 的组件尺寸、轮播视觉、空档推荐、锁屏计时与多品牌真机效果由试用反馈继续验证。学校改版或限制 WebView 时可退回文件导入。
+
+
+# 中大课表助手 HarmonyOS 原生版(新增，仍在内测中)
+
+这是“中大课表助手”的 HarmonyOS 5/6 原生工程，使用 ArkTS、ArkUI Stage 模型和 Form Kit 服务卡片。项目由 **xiaoyle** 制作。
+
+## 已实现
+
+- 导入中山大学教务系统导出的文字 PDF，全程本机解析。
+- 设置第一教学周周一，导入前预览，失败不覆盖旧课表。
+- 今日页面显示下一节课和当天课程。
+- 本机学习待办：添加、完成、恢复、删除。
+- 三张原生服务卡片：下一节课、今日课程、学习看板。
+- 课表和待办保存后主动刷新卡片，卡片也支持手动刷新。
+
+## 在 DevEco Studio 运行
+
+1. 用 DevEco Studio 打开 `D:\HarmonyOS`，等待 Sync 完成。
+2. 用数据线连接 HarmonyOS 5/6 手机，开启开发者模式和 USB 调试。
+3. 打开 `File > Project Structure > Project > Signing Configs`。
+4. 勾选或点击 `Automatically generate signature`，确认已登录的华为开发者账号与当前设备。
+5. 选择手机为运行目标，点击 Run。DevEco 会使用调试证书构建并安装。
+6. 安装后长按应用图标，进入“服务卡片”，选择三种卡片之一添加到桌面。
+
+自动签名生成的证书和设备调试授权与开发者账号、设备相关，不应提交到 GitHub。官方说明：[自动签名](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-signing-auto)、[创建服务卡片](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-service-widget)。
+
+## 命令行构建
+
+在 PowerShell 运行：
+
+```powershell
+./build-hap.ps1
+```
+
+未配置签名时会生成：
+
+`entry/build/default/outputs/default/entry-default-unsigned.hap`
+
+未签名 HAP 用于确认工程可以编译，不能直接安装到普通真机。真机调试请按上面的 DevEco 自动签名流程运行。
+
+## PDF 解析器
+
+解析器已作为离线 HTML 打包到 `entry/src/main/resources/rawfile/pdf/parser.html`。如需重新生成：
+
+```powershell
+cd pdf-web
+npm install
+npm run build
+```
+
+## 当前范围
+
+- 原生首版支持学校导出的文字 PDF；扫描件和截图尚不支持。
+- 这是独立 HarmonyOS 数据库，暂未与 Android 版自动同步。
+- 真机签名、安装与服务卡片添加需要在开发者账号绑定的设备上完成。
 
 ## 文档
 
