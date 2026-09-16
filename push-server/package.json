@@ -1,0 +1,9 @@
+{
+  "name": "campus-schedule-push",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs", "vapid": "web-push generate-vapid-keys --json" },
+  "engines": { "node": ">=22.13" },
+  "dependencies": { "web-push": "^3.6.7" }
+}

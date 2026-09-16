@@ -1,14 +1,14 @@
 # 中大课表助手
 
-## iPhone / 网页版（新增）
+## iPhone / 网页版 PWA
 
 **[打开中大课表网页版](https://xiaoyle.github.io/CampusSchedule/)** · xiaoyle 制作
 
-Safari 访问 → 添加到主屏幕 → 从图标打开 → 导入 Word / PDF 或粘贴快捷指令课表 → 预览确认。已保存课表可离线查看。
+Safari 访问 → 添加到主屏幕 → 从图标打开 → 导入 Word / PDF / 图片或粘贴快捷指令课表 → 预览确认。已保存的课表、待办、笔记、专注记录和设置可离线查看。
 
 [网页版使用、开发与隐私说明](web/README.md) · [学校快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)
 
-iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包含安卓后台闹铃或原生桌面组件。以下为安卓版本说明。
+网页版 `0.6.0-beta.1` 已迁移今日、周课表/月历、自建课程、重复待办、笔记、专注、成就、个人资料、完整备份、Apple 日历和可选匿名加密 Web Push。iPhone 安装、真实学校快捷指令、图片 OCR 内存和推送仍待真机验证。PWA 不包含安卓持续闹铃或原生桌面组件。以下为安卓版本说明。
 
 
 <p align="center">
@@ -23,7 +23,7 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 <p align="center">
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-176B52">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.1.20-6D5CE7">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.14.0--beta-1976D2">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.14.2--beta-1976D2">
   <img alt="Local first" src="https://img.shields.io/badge/data-local%20only-475569">
 </p>
 
@@ -77,7 +77,7 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 
 ## 下载与使用
 
-前往仓库右侧 **Releases**，打开 `v0.14.0` Pre-release，在 **Assets** 中下载 `CampusSchedule-0.14.0.apk`。GitHub 自动生成的 Source code 不是安装包。
+前往仓库右侧 **Releases**，打开 `v0.14.2` Pre-release，在 **Assets** 中下载 `CampusSchedule-0.14.2.apk`。GitHub 自动生成的 Source code 不是安装包。
 
 1. 安装 APK。若旧版本签名一致，可直接覆盖更新。
 2. 在“导入与设置”中确认第一教学周周一，点击“从学校网页导入”，自行登录和二次验证。
@@ -149,7 +149,7 @@ APK 输出位置为 `app/build/outputs/apk/release/app-release.apk`。真实课�
 
 ## 文档
 
-- [0.14.0 发布说明](docs/RELEASE-v0.14.0.md)
+- [0.14.2 发布说明](docs/RELEASE-v0.14.2.md)
 - [社区 CloudBase 部署教程](docs/CLOUDBASE-COMMUNITY.md)
 - [0.13.0 发布说明](docs/RELEASE-v0.13.0.md)
 - [0.12.0 发布说明](docs/RELEASE-v0.12.0.md)

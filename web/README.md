@@ -1,67 +1,79 @@
-# 中大课表网页版 0.1.0
+# 中大课表 iPhone PWA 0.6.0-beta.1
 
 **xiaoyle 制作 · 非中山大学官方应用**
 
-访问 https://xiaoyle.github.io/CampusSchedule/ 。推荐 iOS 17 及以上。
+访问 <https://xiaoyle.github.io/CampusSchedule/>。推荐 iOS 17 及以上，也兼容现代 Android 和桌面浏览器。
 
 ## iPhone 使用
 
-1. 用 Safari 打开网站，点击「添加到主屏幕」阅读引导。
-2. Safari 分享 → 添加到主屏幕；若显示「作为 Web App 打开」，请开启。
-3. 从主屏幕「中大课表」图标打开，进入「导入与设置」。
-4. 确认第一教学周周一。选择 Word／文字 PDF 文件，预览后确认保存。
-5. 等待顶部显示「已可离线使用」。此后短暂断网可打开并查看已保存课表。
+1. 用 Safari 打开网站，点“分享 → 添加到主屏幕”。
+2. 从主屏幕“中大课表”图标打开。
+3. 进入“我的 → 课表与导入”，导入 Word、DOCX、文字 PDF、图片或快捷指令课表。
+4. 在预览或 OCR 校对页确认内容，保存后即可离线查看。
+5. 在“设置”导出 Apple 日历，或在已部署匿名推送服务后开启 Web Push。
 
-Safari 和主屏幕应用可能使用不同的数据空间，请先添加再导入。在 Safari 已有课表时，可「导出课表备份」，从主屏幕应用重新导入 JSON 文件。
+Safari 与主屏幕 Web App 的本地数据空间可能分开，因此建议先添加到主屏幕再导入。清理浏览器、换机或卸载前，请导出“完整备份 V2”。
 
-## 学校登录辅助导入
+## 已迁移功能
 
-网页无法直接读取另一个域名的登录课表，因此使用 Safari 分享菜单的快捷指令。
+- 今日：首页课程、教学周、学期进度、未来七天负荷、优先待办、空档雷达和专注入口。
+- 计划：周课表、学习月历、单次及每周自建课程、重复待办、自选星期、子任务、搜索筛选和本地笔记栏目。
+- 导入：Word、DOCX、文字 PDF、Safari 快捷指令、JPG/PNG/WebP 图片 OCR；所有导入先预览或校对。
+- 笔记：完整阅读/编辑页、700 毫秒草稿、纯文本/安全 Markdown、五种纸张与单篇外观。
+- 专注：25/45/60 分钟倒计时，按时间戳恢复，完成记录用于学习统计与成就。
+- 我的：头像、可选校园资料、三套主题、启动充能页、五个内置成就和自定义成就。
+- 数据：IndexedDB 分仓储、旧版课表自动迁移、完整备份与恢复、Service Worker 离线壳。
+- 提醒：Apple 日历 ICS；可选匿名加密 Web Push。推送服务未配置时不会显示为已启用。
 
-打开网站中的[快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)，按步骤新建「中大课表提取」：接收 Safari 网页 → 在网页上运行 JavaScript（替换为 `public/shortcut.js`）→ 拷贝结果至剪贴板 → 显示完成提醒。
+## 学校网页辅助导入
 
-用户自行在学校页面登录、完成二次验证，进入完整课表，选择全部周次。分享 → 运行快捷指令 → 从主屏幕图标打开课表 → 粘贴课表 → 预览确认。
+PWA 无法跨域读取已登录的学校页面，因此继续使用 Safari 分享菜单快捷指令：
 
-快捷指令不会自动打开已经安装的 PWA。需要用户切回主屏幕应用并粘贴。无可安装的 iCloud 分享链接；必须在 Apple 设备上创建和验证后才能补充。学校真实流程待 iPhone 验证。
+1. 在 Safari 登录学校，完成二次验证。
+2. 打开完整课表并选择“全部”周次。
+3. 分享 → 运行“中大课表提取”。
+4. 回到主屏幕应用，粘贴、预览并保存。
+
+[快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)使用 `public/shortcut.js`。脚本只在指定学校课表路由读取表格，不读取登录表单、Cookie、姓名或学号。可安装的 iCloud 快捷指令链接必须在 Apple 设备上创建并验证，本仓库不虚构分享链接。
+
+## 图片识别
+
+图片识别使用 Tesseract.js 中文/英文模型。文字和坐标只在浏览器本机处理，图片不会上传。首次使用会下载识别模型，之后由浏览器缓存。支持最多 20 张图片，单张上限 18 MB；长图、拍照倾斜、低清晰度和复杂卡片布局可能产生错字，必须在校对页检查周次、星期、节次、课程和地点。
+
+## 提醒边界
+
+- Apple 日历：导出 `.ics`，事件含稳定编号、北京时间、地点和 `VALARM`。课表变更后需重新导出并移除旧日历。
+- Web Push：仅在添加到主屏幕的 Web App 中申请权限。客户端以 AES-GCM 加密标题、地点和深链；服务端只保存匿名订阅、触发时间、密文和设备令牌。
+- PWA 无法提供原生 iPhone 桌面组件、持续闹铃、可靠后台音频或原生锁屏计时控制。
+
+匿名推送服务位于 `../push-server/`，部署后在设置中填写 HTTPS 地址和 VAPID 公钥。静态 GitHub Pages 无法承担定时推送。
 
 ## 本地开发与部署
 
 ```powershell
 cd web
 npm ci
-npm run dev
 npm test
 npm run build
-npm run preview
+npm run preview -- --port 4173
+node browser-check.mjs
 ```
 
-Node.js 22 或更新版本。浏览器访问终端显示的 `/CampusSchedule/` 地址。构建自动复制 PDF.js 字体、CMap；产物不依赖外部 CDN。提交到 main 后 `.github/workflows/web-pages.yml` 自动测试、构建、部署 Pages。仓库 Settings → Pages 使用 GitHub Actions。
+Node.js 22 或更新版本。`.github/workflows/web-pages.yml` 会在 `main` 分支自动测试、构建并部署 GitHub Pages。仓库 Settings → Pages 必须选择 **GitHub Actions**。
 
-`vite.config.ts` 中 base、Manifest 的 id/start_url/scope 固定为 `/CampusSchedule/`，如更换站点路径须一起修改。更换域名会产生新的本地数据空间。
+`vite.config.ts` 的 `base`、Manifest `id/start_url/scope` 固定为 `/CampusSchedule/`。更换域名或路径会形成新的浏览器存储空间。
 
-## 结构与接口
+## 数据结构
 
-- `src/model.ts`：统一课程类型、周次计算、表格快照解析与受限 JSON 输入校验。
-- `src/word.ts`：Flat OPC Word XML 与 DOCX 表格解析；不执行 XML 外部实体。
-- `src/pdf.ts`、`pdf-geometry.ts`：本地 PDF.js 提取文字和描边，再按表格线还原跨页课程；扫描件、旋转及加密 PDF 不支持。
-- `src/store.ts`：IndexedDB，写入成功后才替换界面状态；不因缓存升级删除课表。
-- `src/main.tsx`、`style.css`：中文 React 界面、原生表单、统一课程卡与对话框。
-- `public/shortcut.js`：仅限指定学校完整课表路由读取，不读取登录表单、Cookie 或完整页面。
+- `src/domain.ts`：课程系列、重复任务、笔记、专注、成就、个人资料和日期派生。
+- `src/store.ts`：IndexedDB v2 分仓储、旧版迁移、草稿、图片 Blob 和完整备份。
+- `src/image-import.ts`：浏览器 OCR 与课表坐标重建。
+- `src/ics.ts`：Apple 日历导出。
+- `src/push.ts`、`public/push-sw.js`：匿名订阅、浏览器端加密和通知深链。
+- `src/model.ts`、`word.ts`、`pdf.ts`：原有统一课表解析器。
 
-导入格式：`{format:"campus-schedule",version:1,snapshot:{title,allWeeks,rows}}`；单元格 `{text,rowSpan,colSpan}`。备份格式使用相同 format/version，字段 `schedule` 替代 snapshot。快照最多 80 行、256 列、6000 单元格；粘贴最多 200 万字符，文件最多 8 MB。导入始终先预览。
+## 隐私与验证状态
 
-## 隐私与限制
+课表、任务、笔记、头像、校园资料、专注记录和成就默认只存本机。无账号、广告、分析或社区。推送服务不接收明文学习内容。
 
-文件、结构化课表及剪贴板内容仅在本设备处理，不上传服务器，不进入 URL。无自建账号、分析统计或广告。GitHub Pages 托管方会处理网站访问请求；点击学校链接后由学校处理登录及其 Cookie。数据备份会包含课程、教师及地点，由用户自行保存。
-
-清除浏览器数据、移除 Web App、存储空间不足或系统回收均可能影响本机数据；持久存储申请不是永久保存保证。请保留原文件或备份。
-
-本阶段不包含后台闹铃、原生桌面组件、云同步、个人调课编辑或安卓 DIY 背景迁移。图标用于打开课表，不在图标中实时显示课程。
-
-## 验证
-
-Windows 上运行 `npm test`。私有课表样本不发布，缺少样本时私有回归测试跳过；公开合成用例仍执行。
-
-`node browser-check.mjs` 在 Edge 中验证实际文件导入、预览保存、重新打开、损坏文件保护、离线壳与离线 PDF 导入，以及不同窗口宽度。运行前先 `npm run build`、`npm run preview -- --port 4173`，并在仓库根目录准备私有样本及 `.tools` 输出目录。
-
-iPhone 主屏幕安装、刘海与手势区、真实 Safari 登录和快捷指令执行需用户真机验证，Windows 浏览器结果不能代替真机验收。
+Windows 已验证生产构建、29 项/17 周 PDF 导入、待办保存重开、Service Worker 离线重开和 320–1280 px 响应式布局。iPhone 的添加到主屏幕、Safari 快捷指令、图片 OCR 内存、Web Push 与 Apple 日历仍需真机验收，因此当前版本标记为 beta，不作为 1.0 正式版。

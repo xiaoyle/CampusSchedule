@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "prompt",
-      includeAssets: ["icons/*.png", "shortcut.js", "shortcut-guide.html"],
+      includeAssets: ["icons/*.png", "shortcut.js", "shortcut-guide.html", "push-sw.js"],
       manifest: {
         id: "/CampusSchedule/",
         name: "中大课表",
@@ -33,6 +33,10 @@ export default defineConfig({
             purpose: "maskable",
           },
         ],
+        shortcuts: [
+          { name: "查看今天", short_name: "今天", url: "/CampusSchedule/#/today", icons: [{ src: "icons/icon-192.png", sizes: "192x192" }] },
+          { name: "添加待办", short_name: "待办", url: "/CampusSchedule/#/task/new", icons: [{ src: "icons/icon-192.png", sizes: "192x192" }] },
+        ],
       },
       workbox: {
         globPatterns: ["**/*.{js,mjs,css,html,png,svg,woff2,bcmap,pfb,ttf}"],
@@ -40,6 +44,14 @@ export default defineConfig({
         clientsClaim: true,
         cleanupOutdatedCaches: true,
         navigateFallback: "index.html",
+        importScripts: ["push-sw.js"],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/(cdn\.jsdelivr\.net|tessdata\.projectnaptha\.com)\//,
+            handler: "CacheFirst",
+            options: { cacheName: "ocr-models-v1", expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
+        ],
       },
     }),
   ],

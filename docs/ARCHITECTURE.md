@@ -142,3 +142,10 @@ Room 数据库版本保持 1，0.8.0 只扩展序列化容器的可选默认字�
 `GapRadarEngine` 只接收本机课程实例、任务实例和当前北京时间。它将当天课程扩展为前后各 10 分钟的占用区间，扫描当前时刻至 23:00 的空档，再按逾期、今日截止、紧急、截止时间和优先级筛选能够完整放入的任务。`StudyTask.estimatedMinutes` 可选且限制为 10–180 分钟，旧任务按 30 分钟参与推荐。确认推荐后复用 `FocusEngine` 启动关联倒计时，不创建第二套计时状态。
 
 主页面用可保存页面容器保留滚动与表单状态，并维护访问顺序。弹窗与全屏专注先消费返回事件；首页使用两秒双击退出保护。启动 `LaunchStyle` 与个人中心 `profileBannerStyle` 都增加默认字段，旧 JSON 可直接解码，Room 版本不变。
+## iPhone PWA 0.6.0-beta.1
+
+网页版位于 `web/`，以 React、TypeScript、IndexedDB 和 Service Worker 实现。`domain.ts` 保持与安卓核心模型相同的课程、任务、笔记、专注和成就语义；`store.ts` 将业务数据拆入独立对象仓库，并在首次读取时迁移旧版 `local/schedule`。
+
+图片导入由 Tesseract.js 在浏览器本地生成文字坐标，再由 `image-import.ts` 按星期栏、节次锚点和课程卡片还原统一 `Schedule`。Apple 日历由 `ics.ts` 生成；Web Push 由 `push.ts` 在客户端加密内容，独立 `push-server/` 只调度密文。
+
+Hash 路由用于 GitHub Pages 刷新兼容、系统返回和通知深链。Service Worker 缓存应用壳、PDF 资源和首次下载的 OCR 模型；缓存升级不得删除 IndexedDB。
