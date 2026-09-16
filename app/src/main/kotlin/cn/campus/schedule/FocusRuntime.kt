@@ -26,6 +26,9 @@ object FocusRuntime {
     }
     private fun action(context:Context,action:String,code:Int)=PendingIntent.getBroadcast(context,code,Intent(context,FocusReceiver::class.java).setAction(action),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     private fun alarm(context:Context)=action(context,ACTION_ALARM,64)
+    private fun notifySafely(context:Context,id:Int,notification:Notification){
+        try{NotificationManagerCompat.from(context).notify(id,notification)}catch(_:SecurityException){}
+    }
     fun buildOngoing(context:Context,active:ActiveFocusState):Notification {
         val now=Instant.now();val elapsed=FocusEngine.elapsedSeconds(active,now,SystemClock.elapsedRealtime());val remaining=active.plannedSeconds?.let{(it-elapsed).coerceAtLeast(0)}
         val open=PendingIntent.getActivity(context,NOTIFICATION,Intent(context,MainActivity::class.java).putExtra("openFocus",true),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -55,7 +58,7 @@ object FocusRuntime {
             ReminderScheduler.scheduleAlarm(alarms,context,now.plusSeconds(untilEnd),alarm(context))
         }
         if(active.ambientSound!=AmbientSound.NONE&&active.status==FocusStatus.RUNNING)FocusAudioService.start(context,active.ambientSound,active.volume)
-        else {FocusAudioService.stop(context);NotificationManagerCompat.from(context).notify(NOTIFICATION,buildOngoing(context,active))}
+        else {FocusAudioService.stop(context);notifySafely(context,NOTIFICATION,buildOngoing(context,active))}
         StudyWidget().updateAllSafe(context)
     }
     suspend fun complete(context:Context,active:ActiveFocusState,status:FocusStatus) {
@@ -67,7 +70,7 @@ object FocusRuntime {
         if(status==FocusStatus.COMPLETED){
             val openIntent=Intent(context,MainActivity::class.java).apply{if(active.mode!=FocusMode.BREAK)putExtra("focusCompletedId",session.id)}
             val open=PendingIntent.getActivity(context,COMPLETE_NOTIFICATION,openIntent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            NotificationManagerCompat.from(context).notify(COMPLETE_NOTIFICATION,NotificationCompat.Builder(context,COMPLETE_CHANNEL).setSmallIcon(R.drawable.ic_notification).setContentTitle(if(active.mode==FocusMode.BREAK)"休息结束" else "专注完成")
+            notifySafely(context,COMPLETE_NOTIFICATION,NotificationCompat.Builder(context,COMPLETE_CHANNEL).setSmallIcon(R.drawable.ic_notification).setContentTitle(if(active.mode==FocusMode.BREAK)"休息结束" else "专注完成")
                 .setContentText(if(active.mode==FocusMode.BREAK)"可以开始下一段学习了" else "${session.title} · ${session.focusedSeconds/60} 分钟").setContentIntent(open).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build())
         }
         ReminderScheduler.refresh(context)

@@ -1,5 +1,27 @@
 # 项目架构
 
+## 0.14.0 社区内测
+
+- 安卓社区层使用 OkHttp 与平台无关 REST API 通信；短期访问令牌和轮换刷新令牌由 Android Keystore 加密保存。
+- 公开帖子摘要缓存在独立 Room 文件 `community.db`，与课表的 AppData 数据库隔离。离线只读缓存，发布与评论失败后由用户手动重试。
+- `server/` 是独立 Ktor 3 / Kotlin 2.1 服务，Flyway 管理 CloudBase MySQL；密码使用 Argon2id，访问令牌15分钟，刷新令牌30天且每次使用后轮换。
+- 帖子和评论使用软删除；管理员操作写入审计表。服务端不记录密码、令牌、邮箱正文或笔记正文日志。
+- 本地笔记发布时只创建标题、正文、格式、标签与公开昵称的副本，课表、栏目编号、草稿、外观和个人资料不进入请求。
+
+## 0.13.0 图片识别与首页隔离
+
+- `ImageScheduleRecognizer` 在本机完成方向校正、受限解码和 ML Kit 中文 OCR，并在处理后释放 Bitmap。
+- `ImageScheduleParser` 将带坐标的文字块区分为完整学期表或手机单周表，输出可编辑的 `ImageImportDraft`，确认后继续复用 `ScheduleAssembler` 和现有预览流程。
+- `TodayScreen` 只接收稳定的 `TodayUiState`。课程与任务在后台线程生成一次 `TodayDashboardSnapshot`，页面切换不再使用覆盖整页的 Crossfade。
+- Release 构建启用 R8、资源压缩和 Baseline Profile，Debug 包仅用于开发排查。
+- `benchmark` 模块包含首页滚动 `FrameTimingMetric` 与今日、计划、笔记关键路径的 Baseline Profile 采集；没有连接真机时只编译测试包，不把模拟器结果写成真机结论。
+
+## 0.12.0 笔记与首页派生状态
+
+- `StudyNote` 继续存入 `AppData`，新增内容模式和可选 `NoteAppearance`；未保存的 `NoteDraft` 使用应用私有文件单独防抖写入，避免每次输入触发 Room 整体状态更新。
+- 笔记内部导航分为列表、阅读、编辑和外观设置。有限 Markdown 在后台解析并缓存，渲染层不执行 HTML、脚本或远程图片请求。
+- `TodayDashboardEngine` 一次生成课程、待办、冲突、未来七天和周目标快照。Compose 在后台线程重建快照，首页卡片只消费派生结果；倒计时状态限制在局部组件。
+
 ## 设计目标
 
 中大课表助手把学校导出的复杂课表转换成统一课程模型，再由同一份数据驱动应用页面、桌面组件和提醒。解析器不依赖界面，便于针对真实导出格式测试，也避免不同展示入口出现周次或时间计算差异。

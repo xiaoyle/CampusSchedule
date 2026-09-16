@@ -1,0 +1,49 @@
+openapi: 3.1.0
+info:
+  title: 中大课表助手社区 API
+  version: 0.14.0
+servers:
+  - url: https://replace-with-cloudbase-domain.example/v1
+paths:
+  /auth/register:
+    post:
+      summary: 使用邀请码注册
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Register' } } } }
+      responses: { '201': { description: 注册成功 }, '400': { description: 邀请码或字段无效 }, '409': { description: 用户名或邮箱已存在 } }
+  /auth/login:
+    post:
+      summary: 登录并取得访问与刷新令牌
+      responses: { '200': { description: 登录成功 }, '401': { description: 凭据不正确 } }
+  /auth/refresh:
+    post: { summary: 单次轮换刷新令牌, responses: { '200': { description: 已轮换 }, '401': { description: 失效或检测到重复使用 } } }
+  /posts:
+    get: { summary: 公开分页浏览和搜索帖子, responses: { '200': { description: 帖子列表 } } }
+    post: { summary: 发布本地笔记的脱敏副本, security: [ { bearerAuth: [] } ], responses: { '201': { description: 已发布 } } }
+  /posts/{id}:
+    get: { summary: 阅读帖子和评论, parameters: [ { name: id, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: 帖子详情 } } }
+    put: { summary: 使用 version 乐观锁更新, security: [ { bearerAuth: [] } ], responses: { '200': { description: 已更新 }, '409': { description: 版本冲突 } } }
+    delete: { summary: 软删除自己的帖子, security: [ { bearerAuth: [] } ], responses: { '200': { description: 已删除 } } }
+  /posts/{id}/favorite:
+    put: { summary: 收藏帖子, security: [ { bearerAuth: [] } ], responses: { '200': { description: 已收藏 } } }
+    delete: { summary: 取消收藏, security: [ { bearerAuth: [] } ], responses: { '200': { description: 已取消 } } }
+  /posts/{id}/comments:
+    post: { summary: 发布不超过500字的纯文本评论, security: [ { bearerAuth: [] } ], responses: { '201': { description: 已发布 } } }
+  /reports:
+    post: { summary: 举报帖子或评论, security: [ { bearerAuth: [] } ], responses: { '201': { description: 已提交 } } }
+  /admin/invites:
+    post: { summary: 管理员创建邀请码, security: [ { bearerAuth: [] } ], responses: { '201': { description: 已创建 } } }
+  /admin/reports:
+    get: { summary: 管理员查看举报, security: [ { bearerAuth: [] } ], responses: { '200': { description: 举报列表 } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Register:
+      type: object
+      required: [username, password, inviteCode]
+      properties:
+        username: { type: string, minLength: 4, maxLength: 20, pattern: '^[A-Za-z0-9_]+$' }
+        password: { type: string, minLength: 10, maxLength: 72 }
+        inviteCode: { type: string }
+        email: { type: [string, 'null'], format: email }
+        nickname: { type: [string, 'null'], maxLength: 40 }

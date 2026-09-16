@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "CampusSchedule"
-include(":core", ":app")
+include(":core", ":app", ":benchmark")

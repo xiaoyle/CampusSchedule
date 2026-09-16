@@ -1,9 +1,6 @@
 # 中大课表助手
-华为鸿蒙系组件开发中 
-iphone用户尚无法正常使用
-其他安卓用户均可尝试，如有问题欢迎通过 github issues 留言
 
-# iPhone / 网页版 (仍然内测中，尚不可用)
+## iPhone / 网页版（新增）
 
 **[打开中大课表网页版](https://xiaoyle.github.io/CampusSchedule/)** · xiaoyle 制作
 
@@ -13,20 +10,20 @@ Safari 访问 → 添加到主屏幕 → 从图标打开 → 导入 Word / PDF �
 
 iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包含安卓后台闹铃或原生桌面组件。以下为安卓版本说明。
 
-# 安卓版说明
+
 <p align="center">
   <img src="docs/images/readme-hero.svg" alt="中大课表助手：今日课程、下一节课与桌面 DIY" width="900">
 </p>
 
 <p align="center">
   面向中山大学学生的本地安卓课表工具<br>
-  网页 / Word / PDF 导入 · 桌面组件 · 课前提醒 · 自定义图片背景
+  网页 / Word / PDF / 图片导入 · 桌面组件 · 课前提醒 · 自定义图片背景
 </p>
 
 <p align="center">
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-176B52">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.1.20-6D5CE7">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.11.0-1976D2">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.14.0--beta-1976D2">
   <img alt="Local first" src="https://img.shields.io/badge/data-local%20only-475569">
 </p>
 
@@ -36,13 +33,17 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 
 学校课表需要经过统一门户和教务系统才能查看，在手机桌面上无法快速看到下一节课。中大课表助手将电脑导出的课表还原为结构化课程，在桌面直接显示时间、课程和教室，并在课前提醒。
 
-所有课程、个人资料和自选图片只保存在手机本机。应用没有注册、广告、统计分析、服务器或云同步；网络权限仅用于学校网页及其引用的认证、验证码等资源，登录由学校处理。
+课程、个人资料、自选图片、草稿和正式笔记默认只保存在手机本机。0.14.0 增加邀请码社区内测；只有用户主动发布的笔记标题、正文、标签和公开昵称会发送到配置的社区服务器。应用没有广告、统计分析或课表云同步；学校网页登录仍由学校处理。
 
 ## 功能
 
 - 应用内登录学校网页，进入课表查询、选择全部周次，点击底部“导入当前课表”，核对后保存；真实登录与二次验证仍待真机验证。
 
 - 导入教务系统导出的 Word 或文字 PDF，预览确认后保存；解析失败不覆盖原课表。
+- 从最多20张 JPG、PNG 或 WebP 图片识别课表，支持完整学期截图、长截图、纸质课表照片和多周手机截图；OCR 后可逐项校对。
+- 图片由随包提供的中文 OCR 模型在本机处理，不上传或保存源图片；单周截图只生成实际识别的周次。
+- 新增课业社区：未登录可浏览和搜索公开学习笔记，邀请码用户可发布、收藏、评论和举报；收藏和我的发布可单独查看。
+- 本地笔记阅读页可选择“发布”，上传前显示独立编辑确认；不会上传栏目、外观、草稿、课表或校园资料，也不会自动同步后续修改。
 - 解析星期、周次、连续节次、教师和候选教室，保留真实课程冲突与待确认信息。
 - 提供“下一节课”“今日课程”和“学习看板”三种可缩放桌面组件。
 - 支持提前 5、10、15、30 分钟提醒，以及最长 1 分钟的持续闹铃。
@@ -51,7 +52,9 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 - 添加课程可复用最近 5 个自建课程模板；系列中的每一次都会同步到今日、日历、组件和课前提醒。
 - 新增课业待办，可关联课程并记录作业、考试、复习和其他任务；支持优先级、截止时间、单次提醒、完成、复制和撤销。
 - 待办提醒支持预设提前量或自行选择任意提醒日期与时间；设置页可立即测试或安排 1 分钟后的待办提醒，测试使用与真实待办相同的通知渠道。
-- “我的”中新增本地灵感笔记：可创建栏目、置顶笔记，并选择清爽、方格或暖纸风格及点缀色。
+- “我的”中的灵感笔记采用完整阅读与编辑页面，支持自动草稿、纯文本／Markdown、栏目、置顶和单篇外观。
+- 笔记可调清爽、横线、方格、点阵、暖纸、字体、字号、行距、边距、纹理与点缀色；所有内容只保存在本机。
+- 今日页使用独立稳定状态，共用一次课程与待办计算结果，倒计时局部更新；交付 APK 改为 Release＋R8 优化构建。
 - 底部操作提示改为随浅色、深色和校园主题变化的圆角悬浮卡片，错误与成功状态更容易区分。
 - 支持每日、每周和自选星期重复任务，每次完成状态互不影响；任务可拆成可排序的检查清单。
 - 课表页可切换周课表与学习月历，在同一天的时间轴中统一查看课程和截止任务。
@@ -74,15 +77,16 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 
 ## 下载与使用
 
-前往仓库右侧 **Releases**，打开 `v0.11.0`，在 **Assets** 中下载 `CampusSchedule-0.11.0.apk`。GitHub 自动生成的 Source code 不是安装包。
+前往仓库右侧 **Releases**，打开 `v0.14.0` Pre-release，在 **Assets** 中下载 `CampusSchedule-0.14.0.apk`。GitHub 自动生成的 Source code 不是安装包。
 
 1. 安装 APK。若旧版本签名一致，可直接覆盖更新。
 2. 在“导入与设置”中确认第一教学周周一，点击“从学校网页导入”，自行登录和二次验证。
-3. 进入“课表查询”，选择学期和“全部”周次，点击底部“导入当前课表”，核对预览并确认保存。网页不可用时，将电脑导出的 Word 或文字 PDF 保存到手机“下载”文件夹，使用文件导入。
+3. 进入“课表查询”，选择学期和“全部”周次，点击底部“导入当前课表”，核对预览并确认保存。也可使用 Word/PDF 文件，或在设置中选择“从图片识别课表”并逐项校对。
 4. 检查通知、准时提醒和电池设置，再添加桌面组件。
 5. 进入“桌面 DIY”，选择背景和样式，点击“保存到桌面”。
 6. 在“我的”中设置头像、校园配色、启动场景和精选成就；在“计划”中管理日历、课程和待办。
 7. 从今日页点击“开始专注”，选择时间、目标和环境音；专注结束后再决定是否完成关联任务。
+8. 社区内测需由维护者先部署 CloudBase 服务；在社区页右上角填写 HTTPS 地址，未登录即可浏览，邀请码注册后可参与互动。
 
 默认第一教学周周一为 `2026-09-07`，默认提前 10 分钟提醒；每次导入都可以修改日期。
 
@@ -91,9 +95,11 @@ iPhone 安装及真实学校快捷指令流程待真机验证。网页版不包�
 ```mermaid
 flowchart LR
     A[Word / PDF] --> B[文件识别与安全读取]
+    P[截图 / 纸质课表照片] --> Q[本机中文 OCR 与坐标重建]
     W[学校网页 · 用户自行登录] --> X[点击导入 · 导出捕获 / 表格读取]
     X --> C
     B --> C[表格结构解析]
+    Q --> C
     C --> D[统一课程模型]
     D --> E[导入预览与冲突提示]
     E --> F[(Room 本地存储)]
@@ -108,10 +114,11 @@ flowchart LR
 
 | 模块 | 技术与职责 |
 |---|---|
-| `core` | Kotlin/JVM；课表解析、课程与重复任务计算、专注计时、复盘统计和成就规则 |
-| `app` | Kotlin、Jetpack Compose、Room、Jetpack Glance、AlarmManager、WorkManager、前台媒体服务 |
+| `core` | Kotlin/JVM；Word/PDF/网页/OCR结果解析、课程与重复任务计算、专注计时、复盘统计和成就规则 |
+| `app` | Kotlin、Jetpack Compose、Room、Jetpack Glance、AlarmManager、WorkManager、ML Kit 中文 OCR、前台媒体服务 |
 | 桌面 DIY | 系统文件选择器、受限图片解码、共享背景渲染、Glance 自适应布局 |
-| 隐私 | 本地存储、关闭备份、无应用账号与后端；网页登录会话可手动清除，不读取账号、密码和验证码 |
+| 社区服务 | 独立 `server/`；Ktor、CloudBase MySQL、Argon2id、短期JWT、刷新令牌轮换、举报和管理审计 |
+| 隐私 | 课表与个人资料本地存储；仅主动发布的社区副本上传；网页登录会话可手动清除 |
 
 更完整的技术说明见 [项目架构](docs/ARCHITECTURE.md)，实际验证范围见 [验证记录](VERIFICATION.md)。
 
@@ -121,82 +128,31 @@ flowchart LR
 
 ```powershell
 # Windows
-./gradlew.bat :core:test :app:assembleDebug :app:lintDebug
+./gradlew.bat :core:test :app:assembleRelease :app:lintRelease
 ```
 
 ```bash
 # macOS / Linux
-./gradlew :core:test :app:assembleDebug :app:lintDebug
+./gradlew :core:test :app:assembleRelease :app:lintRelease
 ```
 
-APK 输出位置为 `app/build/outputs/apk/debug/app-debug.apk`。真实课表测试样本位于本地 `private-fixtures`，不会进入 GitHub；缺少这些私有样本时，相应测试会跳过。
+APK 输出位置为 `app/build/outputs/apk/release/app-release.apk`。真实课表测试样本位于本地 `private-fixtures`，不会进入 GitHub；缺少这些私有样本时，相应测试会跳过。
 
 ## 兼容性与限制
 
 - 最低 Android 8.0（API 26），compile/target SDK 35；厂商后台策略可能影响提醒时间。
-- 支持学校导出的 Word、带文字和完整表格边框的 PDF；扫描件、加密文件和旋转页面暂不支持。
+- 支持学校导出的 Word、带文字和完整表格边框的 PDF，以及 JPG/PNG/WebP 课表图片；OCR 结果受清晰度、拍摄角度和表格复杂度影响，保存前必须校对。
 - 不自动推测节假日停课，临时调课由用户修改。
 - 原生 HarmonyOS 5 / 6 / NEXT 通过卓易通运行时，安卓组件通常不能显示在鸿蒙桌面；当前没有原生鸿蒙卡片版。
 - 普通 Android 桌面组件不支持稳定播放视频、GIF 或实况照片；内置场景在组件中显示静态海报，在启动页中显示轻量动态效果。
-- 0.10.0 的组件尺寸、轮播视觉、空档推荐、锁屏计时与多品牌真机效果由试用反馈继续验证。学校改版或限制 WebView 时可退回文件导入。
-
-
-# 中大课表助手 HarmonyOS 原生版(新增，仍在内测中)
-
-这是“中大课表助手”的 HarmonyOS 5/6 原生工程，使用 ArkTS、ArkUI Stage 模型和 Form Kit 服务卡片。项目由 **xiaoyle** 制作。
-
-## 已实现
-
-- 导入中山大学教务系统导出的文字 PDF，全程本机解析。
-- 设置第一教学周周一，导入前预览，失败不覆盖旧课表。
-- 今日页面显示下一节课和当天课程。
-- 本机学习待办：添加、完成、恢复、删除。
-- 三张原生服务卡片：下一节课、今日课程、学习看板。
-- 课表和待办保存后主动刷新卡片，卡片也支持手动刷新。
-
-## 在 DevEco Studio 运行
-
-1. 用 DevEco Studio 打开 `D:\HarmonyOS`，等待 Sync 完成。
-2. 用数据线连接 HarmonyOS 5/6 手机，开启开发者模式和 USB 调试。
-3. 打开 `File > Project Structure > Project > Signing Configs`。
-4. 勾选或点击 `Automatically generate signature`，确认已登录的华为开发者账号与当前设备。
-5. 选择手机为运行目标，点击 Run。DevEco 会使用调试证书构建并安装。
-6. 安装后长按应用图标，进入“服务卡片”，选择三种卡片之一添加到桌面。
-
-自动签名生成的证书和设备调试授权与开发者账号、设备相关，不应提交到 GitHub。官方说明：[自动签名](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-signing-auto)、[创建服务卡片](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-service-widget)。
-
-## 命令行构建
-
-在 PowerShell 运行：
-
-```powershell
-./build-hap.ps1
-```
-
-未配置签名时会生成：
-
-`entry/build/default/outputs/default/entry-default-unsigned.hap`
-
-未签名 HAP 用于确认工程可以编译，不能直接安装到普通真机。真机调试请按上面的 DevEco 自动签名流程运行。
-
-## PDF 解析器
-
-解析器已作为离线 HTML 打包到 `entry/src/main/resources/rawfile/pdf/parser.html`。如需重新生成：
-
-```powershell
-cd pdf-web
-npm install
-npm run build
-```
-
-## 当前范围
-
-- 原生首版支持学校导出的文字 PDF；扫描件和截图尚不支持。
-- 这是独立 HarmonyOS 数据库，暂未与 Android 版自动同步。
-- 真机签名、安装与服务卡片添加需要在开发者账号绑定的设备上完成。
+- 0.14.0 社区仍是邀请码 Pre-release，默认不内置服务地址；CloudBase 测试域名不作为正式公开运营域名。OCR、首页滚动和多品牌效果继续由真机反馈验证。
 
 ## 文档
 
+- [0.14.0 发布说明](docs/RELEASE-v0.14.0.md)
+- [社区 CloudBase 部署教程](docs/CLOUDBASE-COMMUNITY.md)
+- [0.13.0 发布说明](docs/RELEASE-v0.13.0.md)
+- [0.12.0 发布说明](docs/RELEASE-v0.12.0.md)
 - [0.11.0 发布说明](docs/RELEASE-v0.11.0.md)
 - [内置校园照片来源](docs/PHOTO-CREDITS.md)
 - [数据与隐私说明](docs/PRIVACY.md)

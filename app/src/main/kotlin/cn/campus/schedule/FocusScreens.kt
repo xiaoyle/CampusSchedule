@@ -28,10 +28,8 @@ import kotlin.math.*
 
 fun AmbientSound.label()=when(this){AmbientSound.NONE->"关闭";AmbientSound.RAIN->"檐下雨声";AmbientSound.WAVES->"珠海海浪";AmbientSound.LIBRARY->"静谧图书馆"}
 
-@Composable fun FocusQuickStartCard(data:AppData,onStart:(String,String?,String?,String?)->Unit,onOpen:()->Unit){
-    val active=data.activeFocus
-    val today=LocalDate.now(SCHOOL_ZONE)
-    val nextTask=remember(data,today){StudyTaskEngine.occurrences(data,today.minusDays(30),today.plusDays(60)).filter{it.completedAt==null}.minByOrNull{it.dueAt?.toInstant()?:Instant.MAX}}
+@Composable fun FocusQuickStartCard(active:ActiveFocusState?,pendingTasks:List<TaskOccurrence>,onStart:(String,String?,String?,String?)->Unit,onOpen:()->Unit){
+    val nextTask=remember(pendingTasks){pendingTasks.minByOrNull{it.dueAt?.toInstant()?:Instant.MAX}}
     ElevatedCard(onClick={if(active!=null)onOpen() else onStart(nextTask?.title?:"自由学习",nextTask?.courseRuleId,nextTask?.taskId,nextTask?.key)},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp)){
         Row(Modifier.padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)){
             Surface(color=MaterialTheme.colorScheme.primary,shape=CircleShape,modifier=Modifier.size(58.dp)){Box(contentAlignment=Alignment.Center){Icon(if(active==null)Icons.Outlined.PlayArrow else Icons.Outlined.Timer,"专注",tint=MaterialTheme.colorScheme.onPrimary,modifier=Modifier.size(31.dp))}}

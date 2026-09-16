@@ -31,12 +31,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val busy = MutableStateFlow(false)
     val message = MutableStateFlow<String?>(null)
     val preview = MutableStateFlow<ImportResult?>(null)
+    val imageDraft = MutableStateFlow<ImageImportDraft?>(null)
     private var baseline = AppData()
     init { viewModelScope.launch { application.store.data.catch { message.value = "读取失败，请重启应用重试"; loading.value = false }.collect { _data.value = it; loading.value = false } } }
     fun importUri(uri: Uri, monday: String) = task {
         val bytes = getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readLimited() }
             ?: error("无法打开文件，请先把文件保存到手机")
         parse(bytes, monday)
+    }
+    fun importImages(uris:List<Uri>,monday:String,kind:ImageImportKind=ImageImportKind.AUTO)=task {
+        require(runCatching{java.time.LocalDate.parse(monday).dayOfWeek==java.time.DayOfWeek.MONDAY}.getOrDefault(false)){"请先填写正确的第一教学周周一"}
+        imageDraft.value=ImageScheduleRecognizer.recognize(application,uris,monday,kind)
+        message.value="图片识别完成，请逐项校对"
+    }
+    fun replaceImageRow(row:ImageImportRow){
+        imageDraft.value=imageDraft.value?.let{draft->draft.copy(rows=draft.rows.map{if(it.id==row.id)row else it})}
+    }
+    fun removeImageRow(id:String){
+        imageDraft.value=imageDraft.value?.let{draft->draft.copy(rows=draft.rows.filterNot{it.id==id})}
+    }
+    fun discardImageDraft(){imageDraft.value=null}
+    fun acceptImageDraft()=task {
+        val draft=imageDraft.value?:return@task
+        val result=draft.toImportResult()
+        baseline=application.store.read()
+        imageDraft.value=null
+        preview.value=result
     }
     fun importSchool(token: String) = task {
         val result = SchoolImportCache.consume(application, token)
@@ -217,23 +237,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) }
         message.value="栏目已删除，笔记已移到未分类"
     }
-    fun saveStudyNote(note:StudyNote)=task {
+    fun saveStudyNote(note:StudyNote,onSuccess:()->Unit={})=task {
         require(note.title.trim().isNotEmpty()){ "请填写笔记标题" }
         require(note.title.length<=80){ "笔记标题不能超过80字" }
         require(note.content.length<=20_000){ "笔记正文不能超过20000字" }
+        note.appearance?.let(::validateNoteAppearance)
         application.store.update { state ->
             val safeCategory=note.categoryId.takeIf{id->state.noteCategories.any{it.id==id}}.orEmpty()
             state.copy(studyNotes=state.studyNotes.filterNot{it.id==note.id}+note.copy(categoryId=safeCategory,title=note.title.trim()))
         }
         message.value="笔记已保存"
+        withContext(Dispatchers.Main){onSuccess()}
     }
-    fun deleteStudyNote(note:StudyNote)=task {
+    fun deleteStudyNote(note:StudyNote,onSuccess:()->Unit={})=task {
         application.store.update { state -> state.copy(studyNotes=state.studyNotes.filterNot{it.id==note.id}) }
         message.value="笔记已删除"
+        withContext(Dispatchers.Main){onSuccess()}
     }
     fun saveNoteStyle(style:NoteStyle)=task {
+        validateNoteAppearance(NoteAppearance(style.paper,style.accent,style.font,style.fontScale,style.lineSpacing,style.pagePaddingDp,style.patternAlpha,style.previewLines,style.paperTint))
         application.store.update { it.copy(noteStyle=style) }
         message.value="笔记外观已更新"
+    }
+    private fun validateNoteAppearance(value:NoteAppearance){
+        require(value.fontScale in .85f..1.4f){"笔记字号设置无效"}
+        require(value.lineSpacing in 1.2f..2f){"笔记行距设置无效"}
+        require(value.pagePaddingDp in 12..32){"笔记页面边距设置无效"}
+        require(value.patternAlpha in .08f..0.5f){"笔记纹理强度设置无效"}
+        require(value.previewLines in 2..7){"笔记预览行数设置无效"}
     }
     fun saveLearningGoal(target:Int)=task {
         require(target in 1..30)

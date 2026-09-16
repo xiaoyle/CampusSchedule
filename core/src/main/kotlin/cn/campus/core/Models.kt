@@ -94,7 +94,20 @@ enum class ManualLessonEditScope { INSTANCE, FUTURE, SERIES }
     val estimatedMinutes: Int? = null
 )
 @Serializable data class LearningGoal(val weeklyTarget: Int = 5)
-@Serializable enum class NotePaperStyle { CLEAN, GRID, WARM }
+@Serializable enum class NotePaperStyle { CLEAN, RULED, GRID, DOT, WARM }
+@Serializable enum class NoteContentMode { PLAIN, MARKDOWN }
+@Serializable enum class NoteFontStyle { SYSTEM, ROUNDED, SERIF }
+@Serializable data class NoteAppearance(
+    val paper: NotePaperStyle = NotePaperStyle.CLEAN,
+    val accent: Long = 0xFF176B52,
+    val font: NoteFontStyle = NoteFontStyle.SYSTEM,
+    val fontScale: Float = 1f,
+    val lineSpacing: Float = 1.45f,
+    val pagePaddingDp: Int = 20,
+    val patternAlpha: Float = .28f,
+    val previewLines: Int = 4,
+    val paperTint: Long? = null
+)
 @Serializable data class NoteCategory(
     val id: String,
     val title: String,
@@ -108,13 +121,23 @@ enum class ManualLessonEditScope { INSTANCE, FUTURE, SERIES }
     val content: String = "",
     val pinned: Boolean = false,
     val createdAt: String = Instant.now().toString(),
-    val updatedAt: String = Instant.now().toString()
+    val updatedAt: String = Instant.now().toString(),
+    val contentMode: NoteContentMode = NoteContentMode.PLAIN,
+    val appearance: NoteAppearance? = null
 )
 @Serializable data class NoteStyle(
     val paper: NotePaperStyle = NotePaperStyle.CLEAN,
     val accent: Long = 0xFF176B52,
-    val compact: Boolean = false
+    val compact: Boolean = false,
+    val font: NoteFontStyle = NoteFontStyle.SYSTEM,
+    val fontScale: Float = 1f,
+    val lineSpacing: Float = 1.45f,
+    val pagePaddingDp: Int = 20,
+    val patternAlpha: Float = .28f,
+    val previewLines: Int = 4,
+    val paperTint: Long? = null
 )
+@Serializable data class NoteDraft(val note: StudyNote, val savedAt: String = Instant.now().toString())
 @Serializable enum class FocusMode { COUNTDOWN, STOPWATCH, BREAK }
 @Serializable enum class FocusStatus { RUNNING, PAUSED, COMPLETED, STOPPED, INTERRUPTED }
 @Serializable enum class AmbientSound { NONE, RAIN, WAVES, LIBRARY }
@@ -543,6 +566,70 @@ object StudyTaskEngine {
             state?.completedSubtaskIds.orEmpty().toSet(),
             state?.completedAt ?: if (!repeated) task.completedAt else null,
             repeated, override?.estimatedMinutes ?: task.estimatedMinutes
+        )
+    }
+}
+
+data class DailyLoad(val date: LocalDate, val lessonCount: Int, val taskCount: Int)
+
+data class TodayDashboardSnapshot(
+    val today: LocalDate,
+    val allLessons: List<Occurrence>,
+    val conflicts: Set<String>,
+    val todayItems: List<Occurrence>,
+    val todayLessons: List<Occurrence>,
+    val taskWindow: List<TaskOccurrence>,
+    val pendingTasks: List<TaskOccurrence>,
+    val week: Int?,
+    val lastWeek: Int,
+    val progress: Float,
+    val completedThisWeek: Int,
+    val weeklyTarget: Int,
+    val futureLoads: List<DailyLoad>
+) {
+    fun nextLesson(now: Instant): Occurrence? = allLessons.firstOrNull { !it.cancelled && it.endInstant > now }
+
+    fun priorityTask(now: ZonedDateTime): TaskOccurrence? {
+        val nearest = pendingTasks.minWithOrNull(compareBy<TaskOccurrence> { it.dueAt?.toInstant() ?: Instant.MAX }.thenByDescending { it.priority })
+        return pendingTasks.filter { it.dueAt?.isBefore(now) == true }.minByOrNull { it.dueAt!!.toInstant() }
+            ?: pendingTasks.filter { it.dueAt?.toLocalDate() == today }.minByOrNull { it.dueAt!!.toInstant() }
+            ?: pendingTasks.filter { it.priority == StudyTaskPriority.URGENT }.minByOrNull { it.dueAt?.toInstant() ?: Instant.MAX }
+            ?: nearest
+    }
+}
+
+object TodayDashboardEngine {
+    fun build(data: AppData, today: LocalDate): TodayDashboardSnapshot {
+        val lessons = ScheduleEngine.occurrences(data, includeCancelled = true)
+        val tasks = StudyTaskEngine.occurrences(data, today.minusDays(30), today.plusDays(60))
+        return build(data, today, lessons, tasks)
+    }
+
+    fun build(data: AppData, today: LocalDate, lessons: List<Occurrence>, tasks: List<TaskOccurrence>): TodayDashboardSnapshot {
+        val todayItems = lessons.filter { it.date == today }
+        val activeToday = todayItems.filterNot { it.cancelled }
+        val pending = tasks.filter { it.completedAt == null }
+        val schedule = data.schedule
+        val week = schedule?.let { ScheduleEngine.week(today, it.firstMonday) }
+        val lastWeek = schedule?.lastWeek ?: 0
+        val progress = if (week != null && lastWeek > 0) (week.toFloat() / lastWeek).coerceIn(0f, 1f) else 0f
+        val weekStart = today.minusDays((today.dayOfWeek.value - 1).toLong())
+        val weekEnd = weekStart.plusDays(6)
+        val completed = tasks.count { item ->
+            item.completedAt?.let { runCatching { Instant.parse(it).atZone(SCHOOL_ZONE).toLocalDate() }.getOrNull() }
+                ?.let { !it.isBefore(weekStart) && !it.isAfter(weekEnd) } == true
+        }
+        val loads = (0L..6L).map { offset ->
+            val date = today.plusDays(offset)
+            DailyLoad(
+                date,
+                lessons.count { !it.cancelled && it.date == date },
+                tasks.count { it.completedAt == null && it.dueAt?.toLocalDate() == date }
+            )
+        }
+        return TodayDashboardSnapshot(
+            today, lessons, ScheduleEngine.conflicts(lessons), todayItems, activeToday, tasks, pending,
+            week, lastWeek, progress, completed, data.learningGoal.weeklyTarget, loads
         )
     }
 }

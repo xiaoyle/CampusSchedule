@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = '0.11.0'
+$version = '0.14.0'
 $apk = Join-Path $projectRoot "dist/CampusSchedule-$version.apk"
 if (-not (Test-Path -LiteralPath $apk)) { throw '请先构建并打包 APK，再准备 GitHub 发布目录。' }
 $destination = Join-Path $projectRoot ('dist/github-release-' + $version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -11,12 +11,13 @@ New-Item -ItemType Directory -Path $repository,$assets | Out-Null
 # Explicit allowlist: do not enumerate the workspace recursively.
 $files = @(
     'README.md','VERIFICATION.md','DESIGN.md','UX-CONTRACT.md','CHANGELOG.md','CONTRIBUTING.md','.gitignore',
-    'settings.gradle.kts','build.gradle.kts','gradle.properties','gradlew','gradlew.bat','app/build.gradle.kts','core/build.gradle.kts',
+    'settings.gradle.kts','build.gradle.kts','gradle.properties','gradlew','gradlew.bat','app/build.gradle.kts','app/proguard-rules.pro','benchmark/build.gradle.kts','core/build.gradle.kts',
+    'server/settings.gradle.kts','server/build.gradle.kts','server/Dockerfile','server/.dockerignore','server/.env.example','server/docker-compose.yml','server/openapi.yaml','server/README.md','server/admin/index.html',
     'web/.gitignore','web/browser-check.mjs','web/DESIGN.md','web/index.html','web/package-lock.json','web/package.json',
     'web/pdf-debug.mjs','web/premium-ui.json','web/prepare-assets.mjs','web/public-check.mjs','web/public-debug.mjs',
     'web/README.md','web/sw-debug.mjs','web/tsconfig.json','web/vite.config.ts'
 )
-foreach ($folder in @('app/src','core/src','gradle','scripts','docs','.github','web/src','web/tests','web/public')) {
+foreach ($folder in @('app/src','benchmark/src','core/src','gradle','scripts','docs','.github','server/src','server/scripts','web/src','web/tests','web/public')) {
     $files += Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) -Recurse -File | ForEach-Object {
         $_.FullName.Substring($projectRoot.Length).TrimStart([char[]]'\/')
     }

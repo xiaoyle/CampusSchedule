@@ -1,0 +1,28 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: campus_schedule
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus_dev_only
+      MYSQL_ROOT_PASSWORD: root_dev_only
+    ports: ["3306:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build: .
+    environment:
+      DATABASE_URL: jdbc:mysql://mysql:3306/campus_schedule?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      DATABASE_USER: campus
+      DATABASE_PASSWORD: campus_dev_only
+      JWT_SECRET: local-development-secret-change-before-deploying
+      ADMIN_BOOTSTRAP_INVITE: LOCALADMIN2026
+    ports: ["8080:8080"]
+    depends_on:
+      mysql: { condition: service_healthy }
+volumes:
+  mysql-data:

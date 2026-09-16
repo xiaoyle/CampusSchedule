@@ -1,7 +1,6 @@
 package cn.campus.schedule
 
 import android.Manifest
-import android.animation.ValueAnimator
 import android.appwidget.AppWidgetManager
 import android.content.*
 import android.net.Uri
@@ -12,8 +11,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,7 +34,9 @@ import androidx.lifecycle.compose.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.campus.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.*
 
 class MainActivity : ComponentActivity() {
@@ -62,6 +61,7 @@ class MainActivity : ComponentActivity() {
     val message by vm.message.collectAsStateWithLifecycle()
     val personalMessage by personalizationVm.message.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
+    val imageDraft by vm.imageDraft.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(if(openTaskId==null)0 else 1) }
     var tabHistory by rememberSaveable { mutableStateOf<List<Int>>(emptyList()) }
     var lastBackAt by remember { mutableLongStateOf(0L) }
@@ -86,26 +86,45 @@ class MainActivity : ComponentActivity() {
     var focusTask by remember { mutableStateOf<String?>(null) }
     var focusOccurrenceKey by remember { mutableStateOf<String?>(null) }
     var completedSession by remember { mutableStateOf<FocusSession?>(null) }
-    var now by remember { mutableStateOf(Instant.now()) }
+    var notesFullscreen by rememberSaveable { mutableStateOf(false) }
+    var communityDraft by remember { mutableStateOf<StudyNote?>(null) }
+    var today by remember { mutableStateOf(LocalDate.now(SCHOOL_ZONE)) }
     var permissionTick by remember { mutableIntStateOf(0) }
     val whatsNewPrefs=remember{activity.getSharedPreferences("whats_new",Context.MODE_PRIVATE)}
-    var showWhatsNew by remember {mutableStateOf(!whatsNewPrefs.getBoolean("shown_0_11",false))}
+    var showWhatsNew by remember {mutableStateOf(!whatsNewPrefs.getBoolean("shown_0_14",false))}
     val snackbar = remember { SnackbarHostState() }
     val scope=rememberCoroutineScope()
     val pageStateHolder=rememberSaveableStateHolder()
     val owner = LocalLifecycleOwner.current
     val notificationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionTick++; vm.refreshReminders() }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { vm.importUri(it, monday) } }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if(uris.isNotEmpty())vm.importImages(uris.take(20),monday)
+    }
     val schoolBrowser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if(result.resultCode == android.app.Activity.RESULT_OK) result.data?.getStringExtra(SchoolImportCache.TOKEN)?.let { vm.importSchool(it) }
     }
-    val lessons = remember(data) { ScheduleEngine.occurrences(data, includeCancelled=true) }
-    val today = now.atZone(SCHOOL_ZONE).toLocalDate()
-    val active = lessons.filterNot { it.cancelled }
-    val conflicts = remember(lessons) { ScheduleEngine.conflicts(lessons) }
+    val dashboardSource=remember(data.schedule,data.edits,data.manualLessons,data.courseColors,data.studyTasks,data.learningGoal){
+        AppData(schedule=data.schedule,edits=data.edits,manualLessons=data.manualLessons,courseColors=data.courseColors,studyTasks=data.studyTasks,learningGoal=data.learningGoal)
+    }
+    val emptyDashboard=remember(today){TodayDashboardEngine.build(AppData(),today)}
+    val dashboard by produceState(emptyDashboard,dashboardSource,today){value=withContext(Dispatchers.Default){TodayDashboardEngine.build(dashboardSource,today)}}
+    val lessons=dashboard.allLessons
+    val conflicts = dashboard.conflicts
+    val todayUiState=remember(dashboard,today,personalization.profile,data.activeFocus,data.focusSettings,data.schedule,data.manualLessons){
+        TodayUiState(
+            dashboard=dashboard,
+            today=today,
+            profile=personalization.profile,
+            activeFocus=data.activeFocus,
+            focusSettings=data.focusSettings,
+            hasImportedSchedule=data.schedule!=null,
+            hasAnySchedule=data.schedule!=null||data.manualLessons.isNotEmpty()
+        )
+    }
     fun navigate(target:Int) {
         if(target==tab)return
-        if(target==2&&tab>=3){tab=2;return}
+        if(target==3&&tab>=4){tab=3;return}
         tabHistory=tabHistory+tab
         tab=target
     }
@@ -125,9 +144,9 @@ class MainActivity : ComponentActivity() {
         vm.toggleSubtask(item,id,complete)
         if(complete&&item.subtasks.all{it.id==id||it.id in item.completedSubtaskIds})scope.launch{if(snackbar.showSnackbar("子任务已全部完成","完成主任务")==SnackbarResult.ActionPerformed)vm.completeTaskOccurrence(item,true)}
     }
-    LaunchedEffect(Unit) { while (true) { now = Instant.now(); delay(30_000) } }
+    LaunchedEffect(Unit) { while (true) { delay(60_000); today = LocalDate.now(SCHOOL_ZONE) } }
     LaunchedEffect(data.schedule?.firstMonday) { data.schedule?.let { monday = it.firstMonday } }
-    LaunchedEffect(openKey, loading) { if (!loading && openKey != null) lessons.firstOrNull {it.key==openKey}?.let(::openLesson) }
+    LaunchedEffect(openKey, loading, lessons) { if (!loading && openKey != null) lessons.firstOrNull {it.key==openKey}?.let(::openLesson) }
     LaunchedEffect(openTaskId,openTaskOccurrenceKey,loading) {if(!loading&&openTaskId!=null){tab=1;planTasks=true;val source=data.studyTasks.firstOrNull{it.id==openTaskId};source?.let{task->val item=openTaskOccurrenceKey?.let{StudyTaskEngine.occurrence(task,it)}?:StudyTaskEngine.listOccurrences(data,today).firstOrNull{it.taskId==openTaskId};item?.let(::openTask)}}}
     LaunchedEffect(data.focusSessions,focusCompletedId){val prefs=activity.getSharedPreferences("focus",0);val id=focusCompletedId?:prefs.getString("pendingCompletion",null);if(id!=null){data.focusSessions.firstOrNull{it.id==id}?.let{completedSession=it;prefs.edit().remove("pendingCompletion").apply()}}}
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
@@ -135,60 +154,42 @@ class MainActivity : ComponentActivity() {
         personalMessage?.let {snackbar.showSnackbar(it);personalizationVm.message.value=null}
     }
     DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { now = Instant.now(); permissionTick++; vm.refreshReminders();activity.scheduleApp.scope.launch{runCatching{FocusRuntime.refresh(activity)}} } }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { today = LocalDate.now(SCHOOL_ZONE); permissionTick++; vm.refreshReminders();activity.scheduleApp.scope.launch{runCatching{FocusRuntime.refresh(activity)}} } }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
+    imageDraft?.let{draft->ImageImportReviewScreen(draft,busy,vm::discardImageDraft,vm::replaceImageRow,vm::removeImageRow,vm::acceptImageDraft);return}
     if(focusOpenState&&data.activeFocus!=null){val focusing=data.activeFocus!!;FocusTimerScreen(focusing,onBack={focusOpenState=false},onPause=vm::pauseFocus,onResume=vm::resumeFocus,onStop={vm.finishFocus(FocusStatus.STOPPED){if(focusing.mode!=FocusMode.BREAK)completedSession=it;focusOpenState=false}},onNaturalComplete={vm.finishFocus(FocusStatus.COMPLETED){if(focusing.mode!=FocusMode.BREAK)completedSession=it;focusOpenState=false}});return}
     BackHandler {
         when {
-            tab>=3->{tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)}
+            tab>=4->{tab=3;if(tabHistory.lastOrNull()==3)tabHistory=tabHistory.dropLast(1)}
             tab!=0->{val previous=tabHistory.lastOrNull()?:0;tabHistory=tabHistory.dropLast(1);tab=if(previous>=3)2 else previous}
             else->{val moment=SystemClock.elapsedRealtime();if(moment-lastBackAt<=2000)activity.finish()else{lastBackAt=moment;scope.launch{snackbar.showSnackbar("再按一次退出")}}}
         }
     }
     Scaffold(snackbarHost={ CampusSnackbarHost(snackbar) }, bottomBar={
-        NavigationBar {
-            listOf("今日" to Icons.Outlined.Today, "计划" to Icons.Outlined.CalendarMonth, "我的" to Icons.Outlined.Person).forEachIndexed { i, item ->
-                NavigationBarItem(selected=if(i==2)tab>=2 else tab==i, onClick={ navigate(i) }, icon={ Icon(item.second, contentDescription=null) }, label={ Text(item.first) })
+        if (!(tab == 8 && notesFullscreen)) NavigationBar {
+            listOf("今日" to Icons.Outlined.Today, "计划" to Icons.Outlined.CalendarMonth,"社区" to Icons.Outlined.Forum, "我的" to Icons.Outlined.Person).forEachIndexed { i, item ->
+                NavigationBarItem(selected=if(i==3)tab>=3 else tab==i, onClick={ navigate(i) }, icon={ Icon(item.second, contentDescription=null) }, label={ Text(item.first) })
             }
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (loading) Box(Modifier.fillMaxSize(), contentAlignment=Alignment.Center) { CircularProgressIndicator() }
-            else Crossfade(targetState=tab,animationSpec=tween(if(ValueAnimator.areAnimatorsEnabled())180 else 0),label="main-pages") { page->pageStateHolder.SaveableStateProvider(page) { when(page) {
-                0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(14.dp)) {
-                    item {
-                        TodayAssistantHeader(data,personalization.profile,activity,now.atZone(SCHOOL_ZONE),onOpenTasks={navigate(1);planTasks=true},onOpenDate={activity.getSharedPreferences("schedule_view",Context.MODE_PRIVATE).edit().putBoolean("calendar",true).apply();calendarDate=it.toString();navigate(1);planTasks=false})
-                    }
-                    item { FocusQuickStartCard(data,::requestFocus){focusOpenState=true} }
-                    item { GapRadarCard(data,now.atZone(SCHOOL_ZONE),onOpenTasks={navigate(1);planTasks=true},onAddTask={newTask(date=today)},onContinue={focusOpenState=true},onStart={task,minutes->vm.startFocus(task.title,FocusMode.COUNTDOWN,minutes,data.focusSettings.ambientSound,data.focusSettings.ambientVolume,task.courseRuleId,task.taskId,task.key){focusOpenState=true}}) }
-                    if (data.schedule == null && data.manualLessons.isEmpty()) item { EmptyCard("把课表带到桌面", "导入学校课表或添加一项课程后，就能在这里查看安排。", "导入课表") { navigate(3) } }
-                    else {
-                        val next = active.firstOrNull { it.endInstant > now }
-                        item {
-                            Surface(color=MaterialTheme.colorScheme.primaryContainer, shape=RoundedCornerShape(24.dp), modifier=Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(20.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                    Text(if (next != null && next.startInstant <= now) "正在上课" else if(next!=null) "下一节课 · "+countdownText(next.startInstant,now) else "下一节课", fontWeight=FontWeight.Medium)
-                                    if (next == null) Text(if(data.schedule==null) "暂无后续课程" else "本学期课程已结束", fontSize=22.sp, fontWeight=FontWeight.Bold)
-                                    else {
-                                        Text("${next.start}–${next.end}", fontSize=32.sp, fontWeight=FontWeight.Bold)
-                                        if (next.date != today) Text("${next.date} · ${dayName(next.date.dayOfWeek.value)}")
-                                        Text(next.title, fontSize=22.sp, fontWeight=FontWeight.Bold)
-                                        Text(next.locationText)
-                                        TextButton(onClick={ openLesson(next) }) { Text("查看课程") }
-                                    }
-                                }
-                            }
-                        }
-                        val dayItems = lessons.filter { it.date == today }
-                        item { Text("今日安排 · ${dayItems.count { !it.cancelled }} 次课", style=MaterialTheme.typography.titleMedium) }
-                        if (dayItems.isEmpty()) item { Text("今天没有课程，留一点时间给自己。", modifier=Modifier.padding(vertical=12.dp)) }
-                        items(dayItems, key={ it.key }) { lesson -> LessonCard(lesson, lesson.key in conflicts) { openLesson(lesson) } }
-                        item { Text("课表保存在本机 · 调课后请重新导入或修改本次课程", style=MaterialTheme.typography.bodySmall) }
-                    }
-                }
+            else pageStateHolder.SaveableStateProvider(tab) { when(tab) {
+                0 -> TodayScreen(
+                    state=todayUiState,
+                    context=activity,
+                    onOpenTasks={navigate(1);planTasks=true},
+                    onOpenDate={activity.getSharedPreferences("schedule_view",Context.MODE_PRIVATE).edit().putBoolean("calendar",true).apply();calendarDate=it.toString();navigate(1);planTasks=false},
+                    onRequestFocus=::requestFocus,
+                    onOpenFocus={focusOpenState=true},
+                    onAddTask={newTask(date=today)},
+                    onStartGapFocus={task,minutes->vm.startFocus(task.title,FocusMode.COUNTDOWN,minutes,data.focusSettings.ambientSound,data.focusSettings.ambientVolume,task.courseRuleId,task.taskId,task.key){focusOpenState=true}},
+                    onImport={navigate(4)},
+                    onOpenLesson=::openLesson
+                )
                 1 -> Column(Modifier.fillMaxSize()) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=10.dp)) {
                         SegmentedButton(!planTasks,{planTasks=false},shape=SegmentedButtonDefaults.itemShape(0,2)){Text("日历")}
@@ -196,11 +197,12 @@ class MainActivity : ComponentActivity() {
                     }
                     Box(Modifier.weight(1f)) {
                         if(!planTasks) ScheduleHub(data,lessons,conflicts,today,LocalDate.parse(calendarDate),::openLesson,::openTask,{item,complete->vm.completeTaskOccurrence(item,complete)},::toggleTaskSubtask,onAddLesson={date->manualDate=date;editingManual=null;editingManualOccurrence=null;manualPrefill=null;manualDialog=true},onAddTask={date->newTask(date=date)})
-                        else StudyTaskScreen(data,now.atZone(SCHOOL_ZONE),onAdd={newTask(date=today)},onEdit=::openTask,onToggle={task,complete->vm.completeTaskOccurrence(task,complete)},onToggleSubtask=::toggleTaskSubtask,onClearCompleted={clearCompletedConfirm=true})
+                        else StudyTaskScreen(data,onAdd={newTask(date=today)},onEdit=::openTask,onToggle={task,complete->vm.completeTaskOccurrence(task,complete)},onToggleSubtask=::toggleTaskSubtask,onClearCompleted={clearCompletedConfirm=true})
                     }
                 }
-                2 -> MyHub(activity,data,personalization.profile,onReview={navigate(5)},onAchievements={navigate(6)},onNotes={navigate(7)},onSettings={navigate(3)},onProfile={navigate(4)},onMessage={vm.message.value=it})
-                3 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                2 -> CommunityScreen(communityDraft,{communityDraft=null},{navigate(0)})
+                3 -> MyHub(activity,data,personalization.profile,onReview={navigate(6)},onAchievements={navigate(7)},onNotes={navigate(8)},onSettings={navigate(4)},onProfile={navigate(5)},onMessage={vm.message.value=it})
+                4 -> LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(20.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     item { Text("导入与设置", style=MaterialTheme.typography.headlineLarge, fontWeight=FontWeight.Bold) }
                     item { Text("学校课表", style=MaterialTheme.typography.titleLarge); Text(data.schedule?.term ?: "尚未导入课表") }
                     item { OutlinedTextField(value=monday, onValueChange={monday=it}, label={Text("第 1 教学周的周一")}, supportingText={Text("格式：2026-09-07，导入新学期时可修改")}, singleLine=true, modifier=Modifier.fillMaxWidth()) }
@@ -213,6 +215,11 @@ class MainActivity : ComponentActivity() {
                         Text("自行登录本科教务 → 课表查询 → 选择全部 → 点击底部导入。登录与二次验证兼容性待真机验证。", style=MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick={filePicker.launch(arrayOf("*/*"))}, enabled=!busy, modifier=Modifier.fillMaxWidth()) { Icon(Icons.Outlined.UploadFile,null); Spacer(Modifier.width(8.dp)); Text("从文件导入课表") }
                         Text("电脑导出 Word / PDF → 发送到手机 → 保存到“下载”文件夹 → 在这里选择。只解析课表，不保存姓名和学号。", style=MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick={
+                            if(runCatching{LocalDate.parse(monday).dayOfWeek==DayOfWeek.MONDAY}.getOrDefault(false))imagePicker.launch(arrayOf("image/jpeg","image/png","image/webp"))
+                            else vm.message.value="请先填写正确的第一教学周周一"
+                        },enabled=!busy,modifier=Modifier.fillMaxWidth()){Icon(Icons.Outlined.ImageSearch,null);Spacer(Modifier.width(8.dp));Text("从图片识别课表")}
+                        Text("可一次选择最多20张完整课表、长截图、纸质课表照片或手机单周截图。图片只在本机识别，保存前可逐项校对。",style=MaterialTheme.typography.bodySmall)
                     }
                     item {
                         FilledTonalButton(onClick={activity.startActivity(Intent(activity,DiyActivity::class.java))},modifier=Modifier.fillMaxWidth()) { Text("桌面 DIY · 换上自己的照片") }
@@ -236,18 +243,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    item { ReminderChecks(activity, data.reminderMinutes, data.alarmEnabled, onAlarm={vm.alarm(it)}, tick=permissionTick, now=now, onMessage={vm.message.value=it}, requestNotification={
+                    item { ReminderChecks(activity, data.reminderMinutes, data.alarmEnabled, onAlarm={vm.alarm(it)}, tick=permissionTick, now=Instant.now(), onMessage={vm.message.value=it}, requestNotification={
                         if(Build.VERSION.SDK_INT>=33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
                         else SettingsNavigator.open(activity,Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,activity.packageName)) { vm.message.value=it }
                     }) }
                     item { PhoneGuidance(activity) {vm.message.value=it} }
                     item { Text("临时调课与隐私",fontWeight=FontWeight.Bold); Text("点击课程可修改或删除当天安排，也可以在课表页添加单次课程。节假日不自动停课。课程、待办与图片仅存本机。网页登录由学校处理，应用不读取账号、密码和验证码。",style=MaterialTheme.typography.bodySmall); Text("xiaoyle 制作 · 非学校官方应用 · "+appVersionName(activity),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=12.dp)) }
                 }
-                4 -> ProfileScreen(activity,data,personalization,personalizationVm,vm::saveLearningGoal)
-                5 -> FocusReviewScreen(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onGoal=vm::saveFocusGoal,onDelete=vm::deleteFocusSession)
-                6 -> AchievementGallery(data,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onSave={vm.saveCustomAchievement(it)},onDelete={def,progress,featured->vm.deleteAchievement(def.id){scope.launch{if(snackbar.showSnackbar("已删除自定义成就","撤销")==SnackbarResult.ActionPerformed)vm.restoreAchievement(def,progress,featured)}}},onManual=vm::manualUnlockAchievement,onReset=vm::resetAchievement,onFeature={id->vm.featureAchievement(id,id !in data.featuredAchievementIds)},onMoveFeatured=vm::moveFeaturedAchievement)
-                7 -> NotesHub(data,busy,onBack={tab=2;if(tabHistory.lastOrNull()==2)tabHistory=tabHistory.dropLast(1)},onSaveCategory=vm::saveNoteCategory,onDeleteCategory=vm::deleteNoteCategory,onSaveNote=vm::saveStudyNote,onDeleteNote=vm::deleteStudyNote,onSaveStyle=vm::saveNoteStyle)
-            } } }
+                5 -> ProfileScreen(activity,data,personalization,personalizationVm,vm::saveLearningGoal)
+                6 -> FocusReviewScreen(data,onBack={tab=3;if(tabHistory.lastOrNull()==3)tabHistory=tabHistory.dropLast(1)},onGoal=vm::saveFocusGoal,onDelete=vm::deleteFocusSession)
+                7 -> AchievementGallery(data,onBack={tab=3;if(tabHistory.lastOrNull()==3)tabHistory=tabHistory.dropLast(1)},onSave={vm.saveCustomAchievement(it)},onDelete={def,progress,featured->vm.deleteAchievement(def.id){scope.launch{if(snackbar.showSnackbar("已删除自定义成就","撤销")==SnackbarResult.ActionPerformed)vm.restoreAchievement(def,progress,featured)}}},onManual=vm::manualUnlockAchievement,onReset=vm::resetAchievement,onFeature={id->vm.featureAchievement(id,id !in data.featuredAchievementIds)},onMoveFeatured=vm::moveFeaturedAchievement)
+                8 -> NotesWorkspace(data,busy,onBack={tab=3;if(tabHistory.lastOrNull()==3)tabHistory=tabHistory.dropLast(1)},onFullscreenChanged={notesFullscreen=it},onMessage={vm.message.value=it},onSaveCategory=vm::saveNoteCategory,onDeleteCategory=vm::deleteNoteCategory,onSaveNote=vm::saveStudyNote,onDeleteNote=vm::deleteStudyNote,onSaveStyle=vm::saveNoteStyle,onPublish={communityDraft=it;tabHistory=tabHistory+tab;tab=2})
+            } }
         }
     }
     preview?.let { result ->
@@ -317,14 +324,14 @@ class MainActivity : ComponentActivity() {
     if(showWhatsNew) AlertDialog(
         onDismissRequest={},
         icon={Icon(Icons.Outlined.AutoAwesome,"新版速览")},
-        title={Text("0.11.0 新版速览")},
+        title={Text("0.14.0 社区内测")},
         text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-            Text("• 待办可选择任意提醒日期与时间")
-            Text("• 提醒检查新增待办通知真机测试")
-            Text("• “我的”新增可分类、置顶的灵感笔记")
-            Text("• 提示信息改为随主题变化的轻量卡片")
+            Text("• 未登录也可以浏览公开学习笔记")
+            Text("• 使用邀请码注册后可发布、收藏、评论和举报")
+            Text("• 本地笔记可主动发布为独立脱敏副本")
+            Text("• 社区处于小范围测试，需先配置 CloudBase HTTPS 地址")
         }},
-        confirmButton={Button(onClick={whatsNewPrefs.edit().putBoolean("shown_0_11",true).apply();showWhatsNew=false}){Text("开始使用")}}
+        confirmButton={Button(onClick={whatsNewPrefs.edit().putBoolean("shown_0_14",true).apply();showWhatsNew=false}){Text("开始使用")}}
     )
 }
 
@@ -350,6 +357,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable fun NextLessonCard(snapshot:TodayDashboardSnapshot,hasImportedSchedule:Boolean,onOpen:(Occurrence)->Unit) {
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) { while(true) { delay(30_000); now=Instant.now() } }
+    val next=remember(snapshot,now){snapshot.nextLesson(now)}
+    Surface(color=MaterialTheme.colorScheme.primaryContainer, shape=RoundedCornerShape(24.dp), modifier=Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Text(if(next!=null&&next.startInstant<=now)"正在上课" else if(next!=null)"下一节课 · "+countdownText(next.startInstant,now) else "下一节课",fontWeight=FontWeight.Medium)
+            if(next==null)Text(if(!hasImportedSchedule)"暂无后续课程" else "本学期课程已结束",fontSize=22.sp,fontWeight=FontWeight.Bold)
+            else {
+                Text("${next.start}–${next.end}",fontSize=32.sp,fontWeight=FontWeight.Bold)
+                if(next.date!=snapshot.today)Text("${next.date} · ${dayName(next.date.dayOfWeek.value)}")
+                Text(next.title,fontSize=22.sp,fontWeight=FontWeight.Bold)
+                Text(next.locationText)
+                TextButton(onClick={onOpen(next)}){Text("查看课程")}
+            }
+        }
+    }
+}
+
 private fun countdownText(start:Instant,now:Instant):String {
     val minutes=Duration.between(now,start).toMinutes().coerceAtLeast(0)
     return when {
@@ -366,7 +392,7 @@ private fun openSettings(context:Context,intent:Intent) { runCatching{context.st
 private fun pinWidget(context:Context,receiver:Class<*>,vm:MainViewModel) {
     vm.message.value=WidgetSupport.request(context,receiver)
 }
-@Composable private fun EmptyCard(title:String,body:String,action:String,onClick:()->Unit) {
+@Composable fun EmptyCard(title:String,body:String,action:String,onClick:()->Unit) {
     OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text(title,style=MaterialTheme.typography.titleLarge);Text(body);Button(onClick=onClick){Text(action)}}}
 }
 @Composable fun LessonCard(lesson:Occurrence,conflict:Boolean,onClick:()->Unit) {

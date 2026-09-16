@@ -1,3 +1,45 @@
+# 0.14.0 社区内测验证说明
+
+## 已完成的工程检查
+
+- Android `testReleaseUnitTest` 通过；社区契约测试覆盖帖子与令牌响应解析。社区缓存使用独立 `community.db`，原课表 Room 版本保持不变。
+- Ktor 服务端 `test` 与 `installDist` 通过；测试覆盖 Argon2id密码验证、JWT身份与epoch、限流拒绝。
+- 服务端编译包含邀请码事务扣减、刷新令牌轮换与重复使用失效、帖子乐观锁、收藏唯一键、软删除、举报、封禁和审计。
+- `app:assembleRelease`、R8、资源压缩、`app:lintRelease` 与 benchmark测试包编译通过；APK为0.14.0、versionCode18、minSdk26。
+- APK Signature Scheme v2 验证通过；证书 SHA-256 为 `7a0ab690ba53e4b0621880d13be531fe73dc35dee59d90d1e55b1044eaa38d7e`，与0.13.0一致；16KB `zipalign`检查通过。
+
+## 环境限制与待部署检查
+
+- 本机没有 Docker，因此未运行 MySQL 容器迁移与接口端到端测试；Flyway迁移文件、Docker Compose和CloudBase部署配置已交付。
+- 尚未获得用户的 CloudBase 环境ID、MySQL连接信息和HTTPS测试域名，APK默认不写死服务地址；部署后在社区页右上角配置。
+- 邀请码并发、自动登录轮换、账号注销、公开浏览、笔记副本、收藏评论举报及管理员操作需在真实 CloudBase MySQL 上验收后再公开。
+
+# 0.13.0 流畅度与图片课表导入验证说明
+
+## 本次已完成
+
+- `core:test` 通过，共39项核心测试；新增完整学期图片布局、多个手机周截图合并、缺失周次不推测和无效图片数据保护用例。
+- `app:assembleRelease`、R8、资源压缩与 `app:lintRelease` 通过；安装包为 `versionName 0.13.0`、`versionCode 17`，最低 Android 8.0。
+- Release APK 使用 APK Signature Scheme v2，证书 SHA-256 为 `7a0ab690ba53e4b0621880d13be531fe73dc35dee59d90d1e55b1044eaa38d7e`，与0.12.0一致，可覆盖安装。
+- `zipalign -c -P 16 -v 4` 通过；APK 内含随包提供的中文 OCR 模型，无需首次联网下载模型。
+- `benchmark:assembleBenchmarkRelease` 通过，首页滚动 `FrameTimingMetric` 与关键路径 Baseline Profile 采集代码可编译。
+
+## 待真机检查
+
+- 当前电脑没有连接可用于 Android Benchmark 的设备，因此没有填写 P95 帧耗时；目标“P95低于24毫秒、无超过100毫秒停顿”待荣耀 GT 优化构建实测。
+- OCR 对真实完整截图、长截图、倾斜纸质照片及不同手机单周页面的准确率待用户真机校对反馈。识别失败或取消不会覆盖旧课表。
+
+# 0.12.0 沉浸笔记与首页流畅度验证说明
+
+验证日期：2026-09-15。执行核心兼容、编译和签名检查；真机滚动、输入法和视觉效果由用户安装后继续验证。
+
+- `core:test` 共 36 项通过，0 失败；覆盖 0.11.0 旧笔记默认值、Markdown 与单篇外观序列化，以及首页共享快照的课程／待办结果。
+- `app:assembleDebug` 与 `app:lintDebug` 通过；安装包为 `versionName 0.12.0`、`versionCode 16`，最低 Android 8.0。
+- 静态结构检查确认今日页、未来七天、下一步和空档雷达复用 `TodayDashboardSnapshot`；根页面不再每 30 秒刷新，倒计时由局部卡片更新。
+- 清单保留下一节课、今日课程和学习看板 3 个桌面组件；未增加社区、账号或后端权限与数据字段。
+- APK v2 签名验证通过，证书 SHA-256 为 `7a0ab690ba53e4b0621880d13be531fe73dc35dee59d90d1e55b1044eaa38d7e`，与 0.11.0 一致，可覆盖安装。
+- 真机待用户验证：首页连续滚动帧率、输入法适配、草稿进程恢复和不同系统字体下的笔记排版；未宣称已达到模拟器帧率目标。
+
 # 0.11.0 自定义待办提醒、主题提示与灵感笔记验证说明
 
 验证日期：2026-09-13。按用户要求执行必要检查，真机通知及时性和笔记视觉由用户安装后验证。

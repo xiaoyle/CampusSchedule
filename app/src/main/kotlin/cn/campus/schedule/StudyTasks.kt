@@ -20,6 +20,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.campus.core.*
+import kotlinx.coroutines.delay
 import java.time.*
 import java.time.format.DateTimeFormatter
 
@@ -41,40 +42,30 @@ fun taskDueText(task:TaskOccurrence,now:ZonedDateTime):String {
     return when{task.completedAt!=null->"已完成";due.isBefore(now)->"已逾期 · "+due.format(taskTimeFormat);task.type==StudyTaskType.EXAM&&days>0->"考试倒计时 $days 天 · "+due.format(taskTimeFormat);due.toLocalDate()==now.toLocalDate()->"今天 "+due.toLocalTime();else->due.format(taskTimeFormat)}
 }
 
-@Composable fun TodayAssistantHeader(data:AppData,profile:ProfileData,context:android.content.Context,now:ZonedDateTime,onOpenTasks:()->Unit,onOpenDate:(LocalDate)->Unit){
-    val today=now.toLocalDate()
-    val lessons=remember(data,today){ScheduleEngine.occurrences(data).filter{!it.cancelled&&it.date==today}}
-    val taskWindow=remember(data,today){StudyTaskEngine.occurrences(data,today.minusDays(30),today.plusDays(60))}
-    val pending=taskWindow.filter{it.completedAt==null}
-    val nearest=pending.minWithOrNull(compareBy<TaskOccurrence>{it.dueAt?.toInstant()?:Instant.MAX}.thenByDescending{it.priority})
-    val schedule=data.schedule
-    val week=schedule?.let{ScheduleEngine.week(today,it.firstMonday)}
-    val lastWeek=schedule?.lastWeek?:0
-    val progress=if(week!=null&&lastWeek>0)(week.toFloat()/lastWeek).coerceIn(0f,1f)else 0f
-    val weekStart=today.minusDays((today.dayOfWeek.value-1).toLong())
-    val weekEnd=weekStart.plusDays(6)
-    val completedThisWeek=taskWindow.count{item->item.completedAt?.let{runCatching{Instant.parse(it).atZone(SCHOOL_ZONE).toLocalDate()}.getOrNull()}?.let{!it.isBefore(weekStart)&&!it.isAfter(weekEnd)}==true}
-    val urgent=pending.filter{it.dueAt?.isBefore(now)==true}.minByOrNull{it.dueAt!!.toInstant()}?:pending.filter{it.dueAt?.toLocalDate()==today}.minByOrNull{it.dueAt!!.toInstant()}?:pending.filter{it.priority==StudyTaskPriority.URGENT}.minByOrNull{it.dueAt?.toInstant()?:Instant.MAX}?:nearest
+@Composable fun TodayAssistantHeader(snapshot:TodayDashboardSnapshot,profile:ProfileData,context:android.content.Context,onOpenTasks:()->Unit,onOpenDate:(LocalDate)->Unit){
+    var now by remember { mutableStateOf(ZonedDateTime.now(SCHOOL_ZONE)) }
+    LaunchedEffect(Unit){while(true){delay(60_000);now=ZonedDateTime.now(SCHOOL_ZONE)}}
+    val today=snapshot.today
+    val urgent=snapshot.priorityTask(now)
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
             val avatar=remember(profile){AvatarRenderer.render(context,profile,112).asImageBitmap()};Image(avatar,"个人头像",Modifier.size(56.dp),contentScale=ContentScale.Fit)
             Column(Modifier.weight(1f)){Text(if(profile.nickname.isBlank())"你好，同学" else "你好，"+profile.nickname,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary);Text(profile.greeting.ifBlank{"今天，去上课"},style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold);Text("${today.monthValue} 月 ${today.dayOfMonth} 日 · "+weekdayName(today.dayOfWeek.value))}
         }
-        if(week!=null)Column(verticalArrangement=Arrangement.spacedBy(5.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(when{week<1->"尚未开学";week>lastWeek->"学期课程已结束";else->"第 $week 周 / $lastWeek 周"},style=MaterialTheme.typography.labelMedium);Text((progress*100).toInt().toString()+"%",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)};LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())}
-        Surface(color=MaterialTheme.colorScheme.surfaceContainer,shape=RoundedCornerShape(20.dp),modifier=Modifier.fillMaxWidth()){Row(Modifier.padding(16.dp).fillMaxWidth(),horizontalArrangement=Arrangement.SpaceAround){OverviewMetric(lessons.size.toString(),"今日课程");OverviewMetric(pending.size.toString(),"未完成");OverviewMetric("$completedThisWeek/${data.learningGoal.weeklyTarget}","周目标")}}
+        val displayedWeek=snapshot.week
+        if(displayedWeek!=null)Column(verticalArrangement=Arrangement.spacedBy(5.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(when{displayedWeek<1->"尚未开学";displayedWeek>snapshot.lastWeek->"学期课程已结束";else->"第 $displayedWeek 周 / ${snapshot.lastWeek} 周"},style=MaterialTheme.typography.labelMedium);Text((snapshot.progress*100).toInt().toString()+"%",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)};LinearProgressIndicator(progress={snapshot.progress},modifier=Modifier.fillMaxWidth())}
+        Surface(color=MaterialTheme.colorScheme.surfaceContainer,shape=RoundedCornerShape(20.dp),modifier=Modifier.fillMaxWidth()){Row(Modifier.padding(16.dp).fillMaxWidth(),horizontalArrangement=Arrangement.SpaceAround){OverviewMetric(snapshot.todayLessons.size.toString(),"今日课程");OverviewMetric(snapshot.pendingTasks.size.toString(),"未完成");OverviewMetric("${snapshot.completedThisWeek}/${snapshot.weeklyTarget}","周目标")}}
         urgent?.let{task->OutlinedCard(onClick=onOpenTasks,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){Text("下一步 · "+when{task.dueAt?.isBefore(now)==true->"先处理逾期";task.dueAt?.toLocalDate()==today->"今天截止";task.priority==StudyTaskPriority.URGENT->"紧急任务";else->task.type.label()},color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold);Text(task.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text(taskDueText(task,now),style=MaterialTheme.typography.bodySmall,color=if(task.dueAt?.isBefore(now)==true)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)}}}
-        Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Text("未来 7 天",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){(0L..6L).forEach{offset->val date=today.plusDays(offset);val count=taskWindow.count{it.completedAt==null&&it.dueAt?.toLocalDate()==date};val lessonCount=remember(data,date){ScheduleEngine.occurrences(data).count{!it.cancelled&&it.date==date}};Surface(color=if(offset==0L)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,shape=RoundedCornerShape(14.dp),modifier=Modifier.weight(1f).clickable{onOpenDate(date)}){Column(Modifier.padding(vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(if(offset==0L)"今" else weekdayName(date.dayOfWeek.value).takeLast(1),style=MaterialTheme.typography.labelSmall);Text((count+lessonCount).toString(),fontWeight=FontWeight.Black,color=MaterialTheme.colorScheme.primary)}}}}}
+        Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Text("未来 7 天",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){snapshot.futureLoads.forEachIndexed{index,load->Surface(color=if(index==0)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,shape=RoundedCornerShape(14.dp),modifier=Modifier.weight(1f).clickable{onOpenDate(load.date)}){Column(Modifier.padding(vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(if(index==0)"今" else weekdayName(load.date.dayOfWeek.value).takeLast(1),style=MaterialTheme.typography.labelSmall);Text((load.taskCount+load.lessonCount).toString(),fontWeight=FontWeight.Black,color=MaterialTheme.colorScheme.primary)}}}}}
     }
 }
 
 @Composable private fun OverviewMetric(value:String,label:String){Column(horizontalAlignment=Alignment.CenterHorizontally){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Black,color=MaterialTheme.colorScheme.primary);Text(label,style=MaterialTheme.typography.labelMedium)}}
 
-@Composable fun GapRadarCard(data:AppData,now:ZonedDateTime,onOpenTasks:()->Unit,onAddTask:()->Unit,onContinue:()->Unit,onStart:(TaskOccurrence,Int)->Unit) {
-    val today=now.toLocalDate()
-    val lessons=remember(data,today){ScheduleEngine.occurrences(data).filter{!it.cancelled&&it.date==today}}
-    val tasks=remember(data,today){StudyTaskEngine.occurrences(data,today.minusDays(30),today.plusDays(60))}
-    val recommendation=remember(data,now.toLocalTime().hour,now.toLocalTime().minute){GapRadarEngine.recommend(now,lessons,tasks)}
-    val activeFocus=data.activeFocus
+@Composable fun GapRadarCard(snapshot:TodayDashboardSnapshot,activeFocus:ActiveFocusState?,onOpenTasks:()->Unit,onAddTask:()->Unit,onContinue:()->Unit,onStart:(TaskOccurrence,Int)->Unit) {
+    var now by remember { mutableStateOf(ZonedDateTime.now(SCHOOL_ZONE)) }
+    LaunchedEffect(Unit){while(true){delay(60_000);now=ZonedDateTime.now(SCHOOL_ZONE)}}
+    val recommendation=remember(snapshot,now.toLocalTime().hour,now.toLocalTime().minute){GapRadarEngine.recommend(now,snapshot.todayLessons,snapshot.taskWindow)}
     var confirm by remember{mutableStateOf(false)}
     OutlinedCard(Modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp)) {
         Column(Modifier.padding(17.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -90,7 +81,9 @@ fun taskDueText(task:TaskOccurrence,now:ZonedDateTime):String {
     if(confirm&&recommendation?.task!=null){val item=requireNotNull(recommendation.task);AlertDialog(onDismissRequest={confirm=false},title={Text("开始空档专注？")},text={Text("${item.title}\n${recommendation.gap.start.format(gapTimeFormat)}–${recommendation.gap.end.format(gapTimeFormat)}，计划专注 ${recommendation.suggestedMinutes} 分钟。\n\n专注结束后再由你决定是否完成任务。")},confirmButton={Button(onClick={confirm=false;onStart(item,recommendation.suggestedMinutes)}){Text("开始专注")}},dismissButton={TextButton(onClick={confirm=false}){Text("暂不开始")}})}
 }
 
-@Composable fun StudyTaskScreen(data:AppData,now:ZonedDateTime,onAdd:()->Unit,onEdit:(TaskOccurrence)->Unit,onToggle:(TaskOccurrence,Boolean)->Unit,onToggleSubtask:(TaskOccurrence,String,Boolean)->Unit,onClearCompleted:()->Unit){
+@Composable fun StudyTaskScreen(data:AppData,onAdd:()->Unit,onEdit:(TaskOccurrence)->Unit,onToggle:(TaskOccurrence,Boolean)->Unit,onToggleSubtask:(TaskOccurrence,String,Boolean)->Unit,onClearCompleted:()->Unit){
+    var now by remember { mutableStateOf(ZonedDateTime.now(SCHOOL_ZONE)) }
+    LaunchedEffect(Unit){while(true){delay(60_000);now=ZonedDateTime.now(SCHOOL_ZONE)}}
     var status by rememberSaveable{mutableStateOf("all")};var query by rememberSaveable{mutableStateOf("")};var typeFilter by rememberSaveable{mutableStateOf<StudyTaskType?>(null)};var priorityFilter by rememberSaveable{mutableStateOf<StudyTaskPriority?>(null)};var courseFilter by rememberSaveable{mutableStateOf<String?>(null)};var courseMenu by remember{mutableStateOf(false)};var filtersExpanded by rememberSaveable{mutableStateOf(false)};var completedExpanded by rememberSaveable{mutableStateOf(false)}
     val today=now.toLocalDate();val weekEnd=today.plusDays((7-today.dayOfWeek.value).toLong());val all=remember(data,today){StudyTaskEngine.occurrences(data,today.minusDays(30),today.plusDays(60))}
     val visible=all.filter{task->(query.isBlank()||listOf(task.title,task.courseTitle,task.note).any{it.contains(query,true)})&&(typeFilter==null||task.type==typeFilter)&&(priorityFilter==null||task.priority==priorityFilter)&&(courseFilter==null||task.courseRuleId==courseFilter)&&when(status){"today"->task.completedAt==null&&task.dueAt?.toLocalDate()==today;"week"->task.completedAt==null&&task.dueAt?.toLocalDate()?.let{!it.isBefore(today)&&!it.isAfter(weekEnd)}==true;"done"->task.completedAt!=null;else->true}}

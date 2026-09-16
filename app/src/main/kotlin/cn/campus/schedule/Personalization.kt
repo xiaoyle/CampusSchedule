@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.graphics.*
 import android.net.Uri
+import android.util.LruCache
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -116,7 +117,11 @@ class PersonalizationViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 object AvatarRenderer {
+    private val cache=object:LruCache<String,Bitmap>(12){}
     fun render(context: Context, profile: ProfileData, size: Int = 96): Bitmap {
+        val avatarFile=DiyStore.imageFile(context,profile.avatar)?.takeIf {it.exists()}
+        val cacheKey="${profile.hashCode()}@$size@${avatarFile?.lastModified()?:0L}"
+        synchronized(cache){cache.get(cacheKey)?.takeIf{!it.isRecycled}?.let{return it}}
         val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -125,7 +130,7 @@ object AvatarRenderer {
         val radius = if(profile.avatarShape == "rounded") size*.24f else size/2f
         val path = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
         canvas.save(); canvas.clipPath(path)
-        val source = DiyStore.imageFile(context,profile.avatar)?.takeIf {it.exists()}?.let {BitmapFactory.decodeFile(it.path)}
+        val source = avatarFile?.let {BitmapFactory.decodeFile(it.path)}
         if(source != null) {
             val scale=max(size.toFloat()/source.width,size.toFloat()/source.height)*profile.avatarZoom.coerceIn(1f,3f)
             val sw=source.width*scale; val sh=source.height*scale
@@ -142,6 +147,7 @@ object AvatarRenderer {
         canvas.restore()
         paint.style=Paint.Style.STROKE; paint.strokeWidth=border; paint.color=profile.avatarBorder.toInt()
         canvas.drawRoundRect(rect,radius,radius,paint)
+        synchronized(cache){cache.put(cacheKey,output)}
         return output
     }
 }

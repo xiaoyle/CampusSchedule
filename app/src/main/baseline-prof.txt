@@ -1,0 +1,8 @@
+HSPLcn/campus/schedule/EntryActivity;->**(**)**
+HSPLcn/campus/schedule/MainActivity;->**(**)**
+HSPLcn/campus/schedule/MainViewModel;->**(**)**
+HSPLcn/campus/schedule/TodayUiState;->**(**)**
+HSPLcn/campus/schedule/NotesWorkspaceKt;->**(**)**
+HSPLcn/campus/core/ScheduleEngine;->**(**)**
+HSPLcn/campus/core/StudyTaskEngine;->**(**)**
+HSPLcn/campus/core/TodayDashboardEngine;->**(**)**
