@@ -30,11 +30,11 @@ Safari 与主屏幕 Web App 的本地数据空间可能分开，因此建议先�
 PWA 无法跨域读取已登录的学校页面，因此继续使用 Safari 分享菜单快捷指令：
 
 1. 在 Safari 登录学校，完成二次验证。
-2. 打开完整课表并选择“全部”周次。
-3. 分享 → 运行“中大课表提取”。
+2. 进入课表查询，选择学期，等待任意一周课表显示完成；iPhone 页面不需要寻找“全部”选项。
+3. 分享 → 从共享表单运行“中大课表”。
 4. 回到主屏幕应用，粘贴、预览并保存。
 
-[快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)使用 `public/shortcut.js`。脚本只在指定学校课表路由读取表格，不读取登录表单、Cookie、姓名或学号。可安装的 iCloud 快捷指令链接必须在 Apple 设备上创建并验证，本仓库不虚构分享链接。
+[快捷指令配置教程](https://xiaoyle.github.io/CampusSchedule/shortcut-guide.html)使用 `public/shortcut.js`。电脑版已显示“全部”时直接读取表格；iPhone 单周界面则在同一登录会话内调用学校课表页自身使用的 `week=99` 查询，生成完整学期数据。脚本不读取登录表单、Cookie、姓名或学号。可安装的 iCloud 快捷指令链接必须在 Apple 设备上创建并验证，本仓库不虚构分享链接。
 
 ## 图片识别
 
