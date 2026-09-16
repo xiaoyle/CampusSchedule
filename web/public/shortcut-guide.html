@@ -70,7 +70,7 @@
     <button id="copy">复制提取脚本</button>
     <p id="status" role="status"></p>
     <textarea id="script" aria-label="快捷指令脚本" readonly></textarea>
-    <p><a href="shortcut.js" download>下载脚本文件</a></p>
+    <p><a href="shortcut.js?v=20260917" download>下载脚本文件</a></p>
     <h2>每次导入</h2>
     <ol>
       <li>
@@ -97,7 +97,7 @@
     </p>
     <p>xiaoyle 制作 · 非学校官方应用</p>
     <script>
-      fetch("shortcut.js")
+      fetch("shortcut.js?v=20260917", { cache: "no-store" })
         .then((r) => {
           if (!r.ok) throw Error();
           return r.text();
