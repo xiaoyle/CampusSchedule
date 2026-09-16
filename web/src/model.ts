@@ -251,6 +251,8 @@ export function parsePayload(text: string, date: string): Result {
   } catch {
     return fail("不是有效的课表数据，请重新运行快捷指令或选择原始文件");
   }
+  if (o && typeof o.error === "string" && o.error.trim())
+    fail(o.error.trim().slice(0, 300));
   if (o.format !== "campus-schedule" || o.version !== 1)
     fail("课表数据格式或版本不支持");
   if (o.snapshot) return parseTable(o.snapshot, date);

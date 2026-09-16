@@ -68,4 +68,7 @@ test("single week, invalid span, missing weekday, wrong date and malformed backu
       "2026-09-07",
     ),
   ).toThrow();
+  expect(() =>
+    parsePayload(JSON.stringify({ error: "学校登录已过期，请重新登录" }), "2026-09-07"),
+  ).toThrow("学校登录已过期，请重新登录");
 });
