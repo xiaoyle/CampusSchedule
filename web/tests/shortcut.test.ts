@@ -48,7 +48,7 @@ test("shortcut requests the full term when iPhone only shows one week", async ()
     };
   };
   const result = await run(
-    "https://jwxt.sysu.edu.cn/jwxt/mk/schedule-web/#/studentTimeTabPrint?code=jwxsd_xskbcx",
+    "https://jwxt.sysu.edu.cn/jwxt/mk/schedule-web/#/studentweekTimeTabPrint?code=jwxsd_xskbcx",
     "<main><b>2026-1学期</b><span>第1周</span></main>",
     fetchImpl,
   );

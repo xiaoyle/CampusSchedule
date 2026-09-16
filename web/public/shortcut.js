@@ -5,8 +5,9 @@
   const finish = value => completion(JSON.stringify(value));
   const error = message => finish({ error: message });
   try {
-    const hashRoute = location.hash.split('?')[0];
-    if (location.origin !== 'https://jwxt.sysu.edu.cn' || location.pathname !== '/jwxt/mk/schedule-web/' || hashRoute !== '#/studentTimeTabPrint')
+    const hashRoute = location.hash.split('?')[0].toLowerCase();
+    const timetableRoute = hashRoute.includes('studenttimetabprint') || hashRoute.includes('studentweektimetabprint');
+    if (location.origin !== 'https://jwxt.sysu.edu.cn' || !location.pathname.startsWith('/jwxt/mk/') || !timetableRoute)
       return error('请先在 Safari 进入本科教务系统的“课表查询”页面');
 
     // 电脑版若已经展示完整课表，直接读取表格；不接触搜索表单和身份信息。
